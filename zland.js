@@ -7,7 +7,49 @@ const { Event } = require('./GMLIB-LegacyRemoteCallApi/lib/EventAPI-JS');
 const defaultConfig = JSON.stringify({
   "defaultPermGroups": ["admin", "member", "guest"],
   "defaultPlayerPermissionGroup": "member",
-  "customShulkerIds": ["minecraft:shulker_box"]
+  "customShulkerIds": ["minecraft:shulker_box"],
+  "customDoorIds": [
+    "minecraft:oak_door",
+    "minecraft:birch_door",
+    "minecraft:spruce_door",
+    "minecraft:jungle_door",
+    "minecraft:acacia_door",
+    "minecraft:dark_oak_door"
+  ],
+  "customTrapdoorIds": [
+    "minecraft:oak_trapdoor",
+    "minecraft:birch_trapdoor",
+    "minecraft:spruce_trapdoor",
+    "minecraft:jungle_trapdoor",
+    "minecraft:acacia_trapdoor",
+    "minecraft:dark_oak_trapdoor"
+  ],
+  "customButtonIds": [
+    "minecraft:stone_button",
+    "minecraft:wooden_button"
+  ],
+  "customLeverIds": ["minecraft:lever"],
+  "customFenceGateIds": [
+    "minecraft:oak_fence_gate",
+    "minecraft:spruce_fence_gate",
+    "minecraft:birch_fence_gate",
+    "minecraft:jungle_fence_gate",
+    "minecraft:acacia_fence_gate",
+    "minecraft:dark_oak_fence_gate"
+  ],
+  "customSignIds": [
+    "minecraft:oak_sign",
+    "minecraft:birch_sign",
+    "minecraft:spruce_sign",
+    "minecraft:jungle_sign",
+    "minecraft:acacia_sign",
+    "minecraft:dark_oak_sign"
+    
+  ],
+  "enableEconomy": false,
+  "economyType": "llmoney",    
+  "areaCost": "大小 * 0.05",
+  "minAreaSize": 27             
 });
 
 try {
@@ -21,9 +63,44 @@ try {
 let defaultPermGroups = configFile.init("defaultPermGroups", ["admin", "member", "guest"]);
 let defaultPlayerPermissionGroup = configFile.init("defaultPlayerPermissionGroup", "member");
 let customShulkerIds = configFile.init("customShulkerIds", ["minecraft:shulker_box"]);
+let customDoorIds = configFile.init("customDoorIds", [
+  "minecraft:oak_door",
+  "minecraft:birch_door",
+  "minecraft:spruce_door",
+  "minecraft:jungle_door",
+  "minecraft:acacia_door",
+  "minecraft:dark_oak_door"
+]);
+let customTrapdoorIds = configFile.init("customTrapdoorIds", [
+  "minecraft:oak_trapdoor",
+  "minecraft:birch_trapdoor",
+  "minecraft:spruce_trapdoor",
+  "minecraft:jungle_trapdoor",
+  "minecraft:acacia_trapdoor",
+  "minecraft:dark_oak_trapdoor"
+]);
+let customButtonIds = configFile.init("customButtonIds", [
+  "minecraft:stone_button",
+  "minecraft:wooden_button"
+]);
+let customLeverIds = configFile.init("customLeverIds", ["minecraft:lever"]);
+let customFenceGateIds = configFile.init("customFenceGateIds", [
+  "minecraft:oak_fence_gate",
+  "minecraft:spruce_fence_gate",
+  "minecraft:birch_fence_gate",
+  "minecraft:jungle_fence_gate",
+  "minecraft:acacia_fence_gate",
+  "minecraft:dark_oak_fence_gate"
+]);
 
-
-
+let customSignIds = configFile.init("customSignIds", [
+  "minecraft:oak_sign",
+  "minecraft:birch_sign",
+  "minecraft:spruce_sign",
+  "minecraft:jungle_sign",
+  "minecraft:acacia_sign",
+  "minecraft:dark_oak_sign"
+]);
 // 注册插件
 ll.registerPlugin(
     "AreaManager",  // 插件名字
@@ -33,10 +110,16 @@ ll.registerPlugin(
         Author: "Your Name"
     }
 ); 
+let enableEconomy = configFile.init("enableEconomy", false);
+let economyType = configFile.init("economyType", "llmoney"); 
+let areaCost = configFile.init("areaCost", 100); 
+let minAreaSize = configFile.init("minAreaSize", 27);
 const PERMISSIONS_DATA_PATH = "./plugins/AreaManager/permissionsData.json";
 let permissionsData = {};
 loadPermissionsData();
-
+const czGetMoney = ll.imports("CzMoney", "getMoney");
+const czReduceMoney = ll.imports("CzMoney", "reduceMoney");
+const czAddMoney = ll.imports("CzMoney", "addMoney");
 
 function loadPermissionsData() {
     try {
@@ -77,6 +160,8 @@ function getAllPlayersInfo() {
   }
 }
 
+
+
 // 加载权限组数据
 function loadPermGroupsData() {
     try {
@@ -104,9 +189,21 @@ function loadPermGroupsData() {
               dropitem: true,    // 新增：admin允许丢出物品
               bedenter: true,         // 新增：允许上床
               interactentity: true,   // 新增：允许交互实体
-              interactblock: true,    // 新增：允许与方块交互
+              interactdoor: false,
+              interacttrapdoor: false,
+              interactbutton: false,
+              interactlever: false,
+              interactfencegate: false,
+              interactothers: false,
+              interactothers_exceptions: [],
               ride: true,             // 新增：允许骑乘实体
               armorstand: true,       // 新增：允许操控盔甲架
+              stepPressurePlate: true,
+              interactjukebox: true,
+              interactnoteblock: true,
+              interactrepeater: true,
+              interactcomparator: true,
+              interactlectern: true,
               open: { 
                 chest: true,       // 箱子
                 shulker: true,      // 潜影盒（通过配置文件 customShulkerIds 判断）
@@ -146,9 +243,21 @@ function loadPermGroupsData() {
               dropitem: true,    // 新增：admin允许丢出物品
               bedenter: true,         // 新增：允许上床
               interactentity: true,   // 新增：允许交互实体
-              interactblock: true,    // 新增：允许与方块交互
+              interactdoor: false,
+              interacttrapdoor: false,
+              interactbutton: false,
+              interactlever: false,
+              interactfencegate: false,
+              interactothers: false,
+              interactothers_exceptions: [],
               ride: true,             // 新增：允许骑乘实体
               armorstand: true,       // 新增：允许操控盔甲架
+              stepPressurePlate: true,
+              interactjukebox: true,
+              interactnoteblock: true,
+              interactrepeater: true,
+              interactcomparator: true,
+              interactlectern: true,
               open: { 
                 chest: true,       // 箱子
                 shulker: true,      // 潜影盒（通过配置文件 customShulkerIds 判断）
@@ -188,9 +297,21 @@ function loadPermGroupsData() {
               dropitem: true,    // 新增：admin允许丢出物品
               bedenter: true,         // 新增：允许上床
               interactentity: true,   // 新增：允许交互实体
-              interactblock: true,    // 新增：允许与方块交互
+              interactdoor: false,
+              interacttrapdoor: false,
+              interactbutton: false,
+              interactlever: false,
+              interactfencegate: false,
+              interactothers: false,
+              interactothers_exceptions: [],
               ride: true,             // 新增：允许骑乘实体
               armorstand: true,       // 新增：允许操控盔甲架
+              stepPressurePlate: true,
+              interactjukebox: true,
+              interactnoteblock: true,
+              interactrepeater: true,
+              interactcomparator: true,
+              interactlectern: true,
               open: { 
                 chest: true,       // 箱子
                 shulker: true,      // 潜影盒（通过配置文件 customShulkerIds 判断）
@@ -223,6 +344,27 @@ function loadPermGroupsData() {
   }
 }
 
+function computeAreaCost(size) {
+  // 使用 Unicode 变量名（中文）也被 JavaScript 接受
+  let 长 = size.x;
+  let 高 = size.y;
+  let 宽 = size.z;
+  let 大小 = 长 * 高 * 宽;
+  let result;
+  if (typeof areaCost === "string") {
+    try {
+      // 使用 new Function 来构造函数，传入四个参数并返回费用计算结果
+      result = new Function("长", "宽", "高", "大小", "return " + areaCost)(长, 宽, 高, 大小);
+    } catch (e) {
+      logger.error("计算区域费用时出错：" + e);
+      result = 0;
+    }
+  } else {
+    result = areaCost;
+  }
+  return result;
+}
+
 // 保存权限组数据
 function savePermGroupsData() {
     try {
@@ -243,8 +385,8 @@ function loadAreaData() {
         let content = file.readFrom(AREA_DATA_PATH);
         if (content) {
             areaData = JSON.parse(content);
-            logger.info(`默认权限组列表：${defaultPermGroups.join(", ")}`);
-           logger.info(`默认玩家权限组：${defaultPlayerPermissionGroup}`);
+            logger.Debug(`默认权限组列表：${defaultPermGroups.join(", ")}`);
+           logger.Debug(`默认玩家权限组：${defaultPlayerPermissionGroup}`);
         }
     } catch (e) {
         logger.error(`加载区域数据失败: ${e}`);
@@ -352,60 +494,90 @@ function handleCreate(player) {
 
 // 创建区域确认表单
 function showAreaCreateForm(player, points, nickname = "") {
-    let form = mc.newCustomForm();
-    form.setTitle("创建区域确认");
-    
-    // 添加表单组件
-    form.addLabel("§e== 区域信息 ==");
-    form.addInput("区域名称", "请输入区域名称", nickname);
-    form.addLabel(`起点坐标: ${points.pos1.x}, ${points.pos1.y}, ${points.pos1.z}`);
-    form.addLabel(`终点坐标: ${points.pos2.x}, ${points.pos2.y}, ${points.pos2.z}`);
-    
-    // 计算区域大小
-    let size = {
-        x: Math.abs(points.pos2.x - points.pos1.x) + 1,
-        y: Math.abs(points.pos2.y - points.pos1.y) + 1,
-        z: Math.abs(points.pos2.z - points.pos1.z) + 1
-    };
-    form.addLabel(`区域大小: ${size.x}x${size.y}x${size.z}`);
-    
-    // 发送表单给玩家
-    player.sendForm(form, (player, data) => {
-        if (data === null) {
-            player.tell("§c已取消创建区域！");
-            return;
-        }
-        let newArea = {
-          pos1: points.pos1,
-          pos2: points.pos2
+  // 先计算区域大小
+  let size = {
+      x: Math.abs(points.pos2.x - points.pos1.x) + 1,
+      y: Math.abs(points.pos2.y - points.pos1.y) + 1,
+      z: Math.abs(points.pos2.z - points.pos1.z) + 1
+  };
+
+  let volume = size.x * size.y * size.z;
+  if (volume < minAreaSize) {
+    player.tell(`§c创建区域失败：区域体积为 ${volume} 个方块，至少需要 ${minAreaSize} 个方块。`);
+    return;
+}
+
+  // 基于区域大小计算费用（支持公式中的变量：长、宽、高、大小）
+  let cost = computeAreaCost(size);
+
+  let form = mc.newCustomForm();
+  form.setTitle("创建区域确认");
+  
+  // 添加表单组件
+  form.addLabel("§e== 区域信息 ==");
+  form.addInput("区域名称", "请输入区域名称", nickname);
+  form.addLabel(`起点坐标: ${points.pos1.x}, ${points.pos1.y}, ${points.pos1.z}`);
+  form.addLabel(`终点坐标: ${points.pos2.x}, ${points.pos2.y}, ${points.pos2.z}`);
+  form.addLabel(`区域费用：${cost} 金币`);
+  form.addLabel(`区域大小: ${size.x}x${size.y}x${size.z}`);
+  
+  // 发送表单给玩家
+  player.sendForm(form, (player, data) => {
+      if (data === null) {
+          player.tell("§c已取消创建区域！");
+          return;
+      }
+      let newArea = {
+        pos1: points.pos1,
+        pos2: points.pos2
       };
       if (isAreaOverlap(newArea)) {
           player.tell("§c该区域与现有区域重叠，创建失败！");
           return;
       }
-        // 获取表单数据
-        let areaName = data[1].trim() || "未命名区域";
-        
-        // 生成唯一ID
-        let areaId = generateUniqueId();
-        
-        // 保存区域数据
-        areaData[areaId] = {
-            pos1: points.pos1,
-            pos2: points.pos2,
-            ownerxuid: player.xuid,
-            ownerUuid: player.uuid,  // 新增UUID记录
-            nickname: areaName,
-            createTime: new Date().getTime(),
-            size: size
-        };
-        
-        saveAreaData();
-        player.tell(`§a区域创建成功！\n§e区域ID: ${areaId}\n§e区域名称: ${areaName}`);
-        
-        // 清除临时数据
-        delete playerTempPoints[player.uuid];
-    });
+      // 获取表单数据，区域名称默认为“未命名区域”
+      let areaName = data[1].trim() || "未命名区域";
+      
+      if (enableEconomy) {
+          // 重新计算费用（可防止玩家等待期间尺寸变动时有所不同）
+          let cost = computeAreaCost(size);
+          let playerMoney = 0;
+          if (economyType === "llmoney") {
+              playerMoney = money.get(player.xuid);
+          } else if (economyType === "czmoney") {
+              playerMoney = czGetMoney(player.xuid);
+          }
+          if (playerMoney < cost) {
+              player.tell(`§c创建区域需要支付 ${cost} 金币，当前余额：${playerMoney}`);
+              return;
+          }
+          if (economyType === "llmoney") {
+              money.reduce(player.xuid, cost);
+          } else if (economyType === "czmoney") {
+              czReduceMoney(player.xuid, cost);
+          }
+      }
+  
+      // 生成唯一ID
+      let areaId = generateUniqueId();
+      
+      // 保存区域数据
+      areaData[areaId] = {
+          pos1: points.pos1,
+          pos2: points.pos2,
+          ownerxuid: player.xuid,
+          ownerUuid: player.uuid,  // 新增UUID记录
+          nickname: areaName,
+          createTime: new Date().getTime(),
+          size: size
+      };
+      
+      saveAreaData();
+      player.tell(`§a区域创建成功！\n§e区域ID: ${areaId}\n§e区域名称: ${areaName}`);
+      
+      // 清除临时数据
+      delete playerTempPoints[player.uuid];
+  });
 }
 
 function showMainForm(player) {
@@ -603,14 +775,26 @@ function checkPermissionByAction(permConfig, action) {
     dropitem: "dropitem",   
     bedenter: "bedenter",
     interactentity: "interactentity",
-    interactblock: "interactblock",
+    interactdoor: "interactdoor",
+    interacttrapdoor: "interacttrapdoor",
+    interactbutton: "interactbutton",
+    interactlever: "interactlever",
+    interactfencegate: "interactfencegate",
+    interactothers: "interactothers",
+    interactjukebox: "interactjukebox",
+    interactnoteblock: "interactnoteblock",
+    interactrepeater: "interactrepeater",
+    interactcomparator: "interactcomparator",
+    interactlectern: "interactlectern",
     ride: "ride",
     armorstand: "armorstand",
+    steppressureplate: "stepPressurePlate",
+    editsign: "editsign"
   };
 
   let keyPath = mapping[action];
   if (!keyPath) {
-    logger.info(`[checkPermissionByAction] 未知操作类型：${action}`);
+    logger.Debug(`[checkPermissionByAction] 未知操作类型：${action}`);
     return false;
   }
   // 处理嵌套属性，例如 "open.chest"
@@ -627,17 +811,17 @@ function checkPermissionByAction(permConfig, action) {
 }
 
 function hasPermission(player, areaId, action) {
-  logger.info(`[hasPermission] 检查权限开始：玩家UUID=${player.uuid}, 区域ID=${areaId}, 操作=${action}`);
+  logger.Debug(`[hasPermission] 检查权限开始：玩家UUID=${player.uuid}, 区域ID=${areaId}, 操作=${action}`);
   
   let area = areaData[areaId];
   if (!area) {
-    logger.info(`[hasPermission] 区域 ${areaId} 不存在`);
+    logger.Debug(`[hasPermission] 区域 ${areaId} 不存在`);
     return false;
   }
   
   // 区域所有者拥有所有权限
   if (area.ownerxuid === player.xuid || area.ownerUuid === player.uuid) {
-    logger.info(`[hasPermission] 玩家是区域所有者，自动允许操作`);
+    logger.Debug(`[hasPermission] 玩家是区域所有者，自动允许操作`);
     return true;
   }
   
@@ -646,16 +830,16 @@ function hasPermission(player, areaId, action) {
   let group = "";
   if (!permForArea) {
     group = configFile.get("defaultPlayerPermissionGroup", "");
-    logger.info(`[hasPermission] 区域 ${areaId} 没有权限数据，使用默认权限组: ${group}`);
+    logger.Debug(`[hasPermission] 区域 ${areaId} 没有权限数据，使用默认权限组: ${group}`);
   } else {
     group = (permForArea.memberGroups && permForArea.memberGroups[player.uuid])
       ? permForArea.memberGroups[player.uuid]
       : configFile.get("defaultPlayerPermissionGroup", "");
-    logger.info(`[hasPermission] 玩家权限组: ${group}`);
+    logger.Debug(`[hasPermission] 玩家权限组: ${group}`);
   }
   
   if (!group) {
-    logger.info(`[hasPermission] 无法获取到有效权限组，拒绝操作`);
+    logger.Debug(`[hasPermission] 无法获取到有效权限组，拒绝操作`);
     return false;
   }
   
@@ -666,7 +850,7 @@ function hasPermission(player, areaId, action) {
   }
   
   let allowed = checkPermissionByAction(permConfig, action);
-  logger.info(`[hasPermission] 检查结果：${allowed}`);
+  logger.Debug(`[hasPermission] 检查结果：${allowed}`);
   return allowed;
 }
 
@@ -689,24 +873,24 @@ function showAreaOperateForm(player, areaId) {
     if (!permForArea) {
       // 如果该区域没有设置权限数据，则取配置文件中的默认权限组
       group = configFile.get("defaultPlayerPermissionGroup", "");
-      logger.info(`[showAreaOperateForm] 区域 ${areaId} 无权限数据，默认使用权限组：${group}`);
+      logger.Debug(`[showAreaOperateForm] 区域 ${areaId} 无权限数据，默认使用权限组：${group}`);
     } else {
       // 获取该区域中针对当前玩家设置的权限组
       group = (permForArea.memberGroups && permForArea.memberGroups[player.uuid])
         ? permForArea.memberGroups[player.uuid]
         : configFile.get("defaultPlayerPermissionGroup", "");
-      logger.info(`[showAreaOperateForm] 玩家 ${player.uuid} 在区域 ${areaId} 的权限组已设置为：${group}`);
+      logger.Debug(`[showAreaOperateForm] 玩家 ${player.uuid} 在区域 ${areaId} 的权限组已设置为：${group}`);
     }
     let permConfig = permGroupsData[group];
     if (!permConfig) {
       logger.error(`[showAreaOperateForm] 权限组 ${group} 的配置不存在！`);
     } else {
-      logger.info(`[showAreaOperateForm] 权限组 ${group} 的权限配置：${JSON.stringify(permConfig)}`);
+      logger.Debug(`[showAreaOperateForm] 权限组 ${group} 的权限配置：${JSON.stringify(permConfig)}`);
     }
   
     // 检查管理权限前也使用 hasPermission 输出调试日志
     let hasManage = hasPermission(player, areaId, "manage");
-    logger.info(`[showAreaOperateForm] 管理权限检查结果：玩家 ${player.uuid} 对区域 ${areaId} 的管理权限结果：${hasManage}`);
+    logger.Debug(`[showAreaOperateForm] 管理权限检查结果：玩家 ${player.uuid} 对区域 ${areaId} 的管理权限结果：${hasManage}`);
     if (!hasManage) {
       player.tell("你没有权限管理该区域！");
       return;
@@ -721,8 +905,9 @@ function showAreaOperateForm(player, areaId) {
   form.addButton("规则管理", "textures/ui/lock");
   form.addButton("设置玩家权限组", "textures/ui/user");
   form.addButton("权限组管理", "textures/ui/gear");
-  form.addButton("重新选择范围", "textures/ui/redirect");
+  
   if (area.ownerUuid === player.uuid) {
+    form.addButton("重新选择范围", "textures/ui/redirect");
     form.addButton("转让所有权", "textures/ui/transfer");
 }
   player.sendForm(form, (player, id) => {
@@ -971,28 +1156,33 @@ function getAreasAtPos(pos) {
   return areas;
 }
 
+/**
+ * 检查指定位置处所有区域对玩家是否允许执行特定动作
+ * @param {Player} player 玩家对象
+ * @param {Object} pos 检查的坐标对象
+ * @param {string} action 动作名，例如 "break", "place" 等
+ * @param {string} errorMessage 如果不允许执行时提示的错误信息
+ * @returns {boolean} 如果所有区域都允许则返回 true，否则返回 false
+ */
+function checkPermissionForPosition(player, pos, action, errorMessage) {
+  const areas = getAreasAtPos(pos);
+  for (const { id } of areas) {
+    if (!hasPermission(player, id, action)) {
+      player.tell(errorMessage);
+      return false;
+    }
+  }
+  return true;
+}
+
 mc.listen("onDestroyBlock", (player, block) => {
   if (!player || !block) return;
-  let areas = getAreasAtPos(block.pos);
-  for (let { id } of areas) {
-          if (!hasPermission(player, id, "break")) {
-              player.tell("§c你没有权限破坏该区域内的方块！");
-              return false;
-          }
-      }
-  
+  return checkPermissionForPosition(player, block.pos, "break", "§c你没有权限破坏该区域内的方块！");
 });
 
 mc.listen("onPlaceBlock", (player, block, face) => {
   if (!player || !block) return;
-  let areas = getAreasAtPos(block.pos);
-  for (let { id } of areas) {
-          if (!hasPermission(player, id, "place")) {
-              player.tell("§c你没有权限在该区域内放置方块！");
-              return false;
-          }
-      
-  }
+  return checkPermissionForPosition(player, block.pos, "place", "§c你没有权限在该区域内放置方块！");
 });
 
 mc.listen("onAttackEntity", (player, entity, damage) => {
@@ -1148,7 +1338,7 @@ mc.listen("onBedEnter", (player, pos) => {
   return true;
 });
 
-/* 玩家交互实体事件监听：onPlayerInteractEntity
+
 mc.listen("onPlayerInteractEntity", (player, entity) => {
   // 使用实体的坐标进行区域检测
   let areas = getAreasAtPos(entity.pos);
@@ -1160,7 +1350,7 @@ mc.listen("onPlayerInteractEntity", (player, entity) => {
   }
   return true;
 });
-*/
+
 // 操控盔甲架事件监听：onChangeArmorStand
 mc.listen("onChangeArmorStand", (as, pl, slot) => {
   let pos = as.pos;
@@ -1174,17 +1364,107 @@ mc.listen("onChangeArmorStand", (as, pl, slot) => {
   return true;
 });
 
-// 方块交互事件监听：onBlockInteracted
+
+
 mc.listen("onBlockInteracted", (player, block) => {
+  if (!player || !block) return true;
+
+  // 获取被互动方块所在的所有区域
   let areas = getAreasAtPos(block.pos);
+  if (!areas || areas.length === 0) return true; // 不在任何区域内，放行
+
+  // 根据方块类型确定操作类型
+  let action = "";
+  if (block.type === "minecraft:jukebox") {
+    action = "interactjukebox";
+} else if (block.type === "minecraft:noteblock") {
+    action = "interactnoteblock";
+} else if (block.type === "minecraft:repeater") {
+    action = "interactrepeater";
+} else if (block.type === "minecraft:comparator") {
+    action = "interactcomparator";
+} else if (block.type === "minecraft:lectern") {
+    action = "interactlectern";
+} else if (customSignIds.includes(block.type)) {
+    action = "editsign";
+} else if (customDoorIds.includes(block.type)) {
+    action = "interactdoor";
+} else if (customTrapdoorIds.includes(block.type)) {
+    action = "interacttrapdoor";
+} else if (customButtonIds.includes(block.type)) {
+    action = "interactbutton";
+} else if (customLeverIds.includes(block.type)) {
+    action = "interactlever";
+} else if (customFenceGateIds.includes(block.type)) {
+    action = "interactfencegate";
+} else {
+    action = "interactothers";
+}
+
+  // 确保 block.type 为字符串
+  let blockTypeStr = typeof block.type === "string" ? block.type : String(block.type);
+
+  // 遍历所有区域，所有区域内都必须允许该互动
   for (let { id } of areas) {
-    if (!hasPermission(player, id, "interactblock")) {
-      player.tell("§c你没有权限在该区域内与方块交互！");
-      return false;
+    let area = areaData[id];
+    // 如果玩家是区域所有者，则跳过该区域的权限检查
+    if (area.ownerxuid === player.xuid || area.ownerUuid === player.uuid) {
+      continue;
+    }
+    
+    if (action !== "interactothers") {
+      // 对于非“其他交互”的操作，直接通过已有的hasPermission函数检查
+      if (!hasPermission(player, id, action)) {
+        player.tell(`§c你没有权限在该区域内与 ${blockTypeStr} 进行互动！`);
+        return false;
+      }
+    } else {
+      // 对于“其他交互”，需要根据配置判断例外名单
+      let permForArea = permissionsData[id];
+      let group = (permForArea &&
+                   permForArea.memberGroups &&
+                   typeof permForArea.memberGroups[player.uuid] !== "undefined"
+                   ? permForArea.memberGroups[player.uuid]
+                   : configFile.get("defaultPlayerPermissionGroup", ""));
+      let permConfig = permGroupsData[group];
+      if (!permConfig) {
+        logger.error(`[onBlockInteracted] 权限组 ${group} 的配置不存在！`);
+        return false;
+      }
+      
+      // 处理 interactothers_exceptions，确保它为字符串后再转小写拆分
+      let exceptionsConfig = permConfig.interactothers_exceptions;
+      if (typeof exceptionsConfig !== "string") {
+          exceptionsConfig = String(exceptionsConfig);
+      }
+      let exceptionsList = exceptionsConfig
+                              .toLowerCase()
+                              .split(",")
+                              .map(x => x.trim())
+                              .filter(x => x !== "");
+      
+      let defaultAllowed = !!permConfig.interactothers;
+      
+      if (defaultAllowed) {
+        // 默认允许互动，但如果该方块在例外名单中则禁止
+        if (exceptionsList.includes(blockTypeStr.toLowerCase())) {
+          logger.Debug(`[onBlockInteracted] 区域 ${id} 默认允许 interactothers，但 ${blockTypeStr.toLowerCase()} 在例外名单中`);
+          player.tell(`§c你没有权限与 ${blockTypeStr} 进行互动！`);
+          return false;
+        }
+      } else {
+        // 默认禁止互动，只有例外名单中的方块允许
+        if (!exceptionsList.includes(blockTypeStr.toLowerCase())) {
+          logger.Debug(`[onBlockInteracted] 区域 ${id} 默认禁止 interactothers，而 ${blockTypeStr.toLowerCase()} 不在例外名单中`);
+          player.tell(`§c你没有权限与 ${blockTypeStr} 进行互动！`);
+          return false;
+        }
+      }
     }
   }
   return true;
 });
+
 
 // 骑乘实体事件监听：onRide
 mc.listen("onRide", (entity1, entity2) => {
@@ -1199,6 +1479,25 @@ mc.listen("onRide", (entity1, entity2) => {
   }
   return true;
 });
+
+/* 3. 增加踩压力板事件监听 */
+mc.listen("onStepOnPressurePlate", (entity, pressurePlate) => {
+  // 尝试将传入的实体转换为玩家对象
+  const player = entity.toPlayer ? entity.toPlayer() : null;
+  if (!player) return true;  // 如果不是玩家则不做限制
+  
+  // 获取压力板所在位置对应的所有区域
+  const areas = getAreasAtPos(pressurePlate.pos);
+  for (const { id } of areas) {
+    // 检查玩家是否拥有踩压力板的权限
+    if (!hasPermission(player, id, "steppressureplate")) {
+      player.tell("§c你没有权限踩压力板！");
+      return false;  // 拦截事件
+    }
+  }
+  return true;  // 允许事件
+});
+
 // 监听实体尝试自然生成事件（onMobTrySpawn）
 // 当自然生成的实体位置位于某个区域内，并且该区域规则禁止自然生成时，返回 false 拦截生成
 mc.listen("onMobTrySpawn", function(typeName, pos) {
@@ -1209,13 +1508,15 @@ mc.listen("onMobTrySpawn", function(typeName, pos) {
       // 从权限数据中获取区域规则，默认为允许自然生成
       let rule = (area.rules) ? area.rules : (permissionsData[areaId] || {});
       if (rule.allowMobSpawn === false) {
-        logger.info(`拦截区域 [${areaId}] 内自然生成（type: ${typeName}）`);
+        logger.Debug(`拦截区域 [${areaId}] 内自然生成（type: ${typeName}）`);
         return false; // 拦截生成事件
       }
     }
   }
   return true; // 允许生成
 });
+
+
 
 // 监听实体爆炸事件（onEntityExplode）
 
@@ -1230,34 +1531,34 @@ mc.listen("onEntityExplode", function(source, pos, radius, maxResistance, isDest
         // 针对凋灵之首（wither_skull_dangerous 与 wither_skull）的爆炸
         if (srcType === "minecraft:wither_skull_dangerous" || srcType === "minecraft:wither_skull") {
           if (rule.allowWitherSkullExplode === false) {
-            logger.info(`拦截区域 [${areaId}] 内凋灵之首爆炸（类型：${source.type}）`);
+            logger.Debug(`拦截区域 [${areaId}] 内凋灵之首爆炸（类型：${source.type}）`);
             return false;
           }
         }
         // 针对 wither 爆炸（仅判断类型为 "wither"）
         else if (srcType === "minecraft:wither") {
           if (rule.allowWitherExplode === false) {
-            logger.info(`拦截区域 [${areaId}] 内凋灵爆炸（类型：${source.type}）`);
+            logger.Debug(`拦截区域 [${areaId}] 内凋灵爆炸（类型：${source.type}）`);
             return false;
           }
         }
         // 新增判断：苦力怕爆炸
         else if (srcType === "minecraft:creeper") {
           if (rule.allowCreeperExplode === false) {
-            logger.info(`拦截区域 [${areaId}] 内苦力怕爆炸（类型：${source.type}）`);
+            logger.Debug(`拦截区域 [${areaId}] 内苦力怕爆炸（类型：${source.type}）`);
             return false;
           }
         }
         // 新增判断：末影水晶爆炸
         else if (srcType === "minecraft:ender_crystal") {
           if (rule.allowEnderCrystalExplode === false) {
-            logger.info(`拦截区域 [${areaId}] 内末影水晶爆炸（类型：${source.type}）`);
+            logger.Debug(`拦截区域 [${areaId}] 内末影水晶爆炸（类型：${source.type}）`);
             return false;
           }
         }
         else if (srcType === "minecraft:fireball") {
           if (rule.allowFireballExplode === false) {
-            logger.info(`拦截区域 [${areaId}] 内火球爆炸（类型：${source.type}）`);
+            logger.Debug(`拦截区域 [${areaId}] 内火球爆炸（类型：${source.type}）`);
             return false;
           }
         }
@@ -1283,7 +1584,7 @@ mc.listen("onWitherBossDestroy", (witherBoss, AAbb, aaBB) => {
     if (isPosInArea(center, area)) {
       let rule = permissionsData[areaId] || {};
       if (rule.allowWitherBlockBreak === false) {
-        logger.info(`拦截区域 [${areaId}] 内的凋灵破坏`);
+        logger.Debug(`拦截区域 [${areaId}] 内的凋灵破坏`);
         return false;
       }
     }
@@ -1298,20 +1599,22 @@ mc.listen("onBlockExploded", function(block, source) {
   
   // 若为 TNT，不复原
   if (originalType === "minecraft:tnt") {
-      logger.info("检测到TNT方块被爆炸，跳过复原：" + JSON.stringify(pos));
+      logger.Debug("检测到TNT方块被爆炸，跳过复原：" + JSON.stringify(pos));
       return;
   }
   
   // 判断方块所在的位置是否位于设置了不允许爆炸摧毁的区域内
   let inProtectedArea = false;
-  for (let id in areaData) {
-    let area = areaData[id];
+  
+  for (let areaId in areaData) {
+    let area = areaData[areaId];
     if (isPosInArea(pos, area)) {
       let rule = (area.rules) ? area.rules : (permissionsData[areaId] || {});
       // 默认允许爆炸摧毁区域内方块，当配置明确为 false 时，认为区域不允许
       let allowExplosion = (rule.allowExplosionBlockDestruction !== undefined)
                            ? rule.allowExplosionBlockDestruction : true;
       if (!allowExplosion) {
+        logger.Debug(`阿德`)
         inProtectedArea = true;
         break;
       }
@@ -1320,7 +1623,7 @@ mc.listen("onBlockExploded", function(block, source) {
   
   // 如果所在区域允许爆炸摧毁，则跳过复原操作
   if (!inProtectedArea) {
-    logger.info("区域规则允许爆炸破坏，跳过复原：" + JSON.stringify(pos));
+    logger.Debug("区域规则允许爆炸破坏，跳过复原：" + JSON.stringify(pos));
     return;
   }
   
@@ -1350,9 +1653,9 @@ mc.listen("onBlockExploded", function(block, source) {
           }
         }
       }
-      logger.info("成功复原方块及其所有数据：" + originalType + " @ " + JSON.stringify(pos));
+      logger.Debug("成功复原方块及其所有数据：" + originalType + " @ " + JSON.stringify(pos));
     } else {
-      logger.info("复原方块失败 @ " + JSON.stringify(pos));
+      logger.Debug("复原方块失败 @ " + JSON.stringify(pos));
     }
   }, 50);
   
@@ -1373,7 +1676,7 @@ Event.listen("onItemTrySpawn", (item, pos, entity) => {
   );
   
   if (isFromExplosion) {
-      logger.info("拦截爆炸方块附近的掉落物生成", pos, item, entity);
+      logger.Debug("拦截爆炸方块附近的掉落物生成", pos, item, entity);
       return false; // 拦截掉落物生成
   }
   return true; // 允许其他情况的掉落物生成
@@ -1386,7 +1689,7 @@ mc.listen("onFarmLandDecay", function(pos, entity) {
     if (isPosInArea(pos, area)) {
       let rule = (area.rules) ? area.rules : {};
       if (rule.allowFarmlandDecay === false) {
-        logger.info(`拦截区域 [${areaId}] 内耕地退化，坐标: ${JSON.stringify(pos)}`);
+        logger.Debug(`拦截区域 [${areaId}] 内耕地退化，坐标: ${JSON.stringify(pos)}`);
         return false;
       }
     }
@@ -1401,7 +1704,7 @@ mc.listen("onRespawnAnchorExplode", function(pos, player) {
     if (isPosInArea(pos, area)) {
       let rule = (area.rules) ? area.rules : {};
       if (rule.allowRespawnAnchorExplode === false) {
-        logger.info(`拦截区域 [${areaId}] 内重生锚爆炸，坐标: ${JSON.stringify(pos)}`);
+        logger.Debug(`拦截区域 [${areaId}] 内重生锚爆炸，坐标: ${JSON.stringify(pos)}`);
         return false;
       }
     }
@@ -1415,7 +1718,7 @@ mc.listen("onBlockExplode", function(source, pos, radius, maxResistance, isDestr
     if (isPosInArea(pos, area)) {
       let rule = (area.rules) ? area.rules : {};
       if (rule.allowBlockExplode === false) {
-        logger.info(`拦截区域 [${areaId}] 内方块爆炸，坐标: ${JSON.stringify(pos)}`);
+        logger.Debug(`拦截区域 [${areaId}] 内方块爆炸，坐标: ${JSON.stringify(pos)}`);
         return false;
       }
     }
@@ -1431,7 +1734,7 @@ mc.listen("onFireSpread", function(pos) {
     if (isPosInArea(pos, area)) {
       let rule = (area.rules) ? area.rules : {};
       if (rule.allowFireSpread === false) {
-        logger.info(`拦截区域 [${areaId}] 内火焰蔓延，坐标: ${JSON.stringify(pos)}`);
+        logger.Debug(`拦截区域 [${areaId}] 内火焰蔓延，坐标: ${JSON.stringify(pos)}`);
         return false;
       }
     }
@@ -1460,7 +1763,7 @@ function isPosOnAreaBoundary(pos, area) {
 
 // ── 修改后的 onLiquidFlow 事件监听（直接检测流动坐标是否在区域边界） ──
 mc.listen("onLiquidFlow", function(from, to) {
-  //logger.info(`[onLiquidFlow] 流动坐标: ${JSON.stringify(to)}`);
+  //logger.Debug(`[onLiquidFlow] 流动坐标: ${JSON.stringify(to)}`);
   
   // 遍历所有区域
   for (let areaId in areaData) {
@@ -1470,9 +1773,9 @@ mc.listen("onLiquidFlow", function(from, to) {
       // 再判断是否在区域边界上
       if (isPosOnAreaBoundary(to, area)) {
         let rule = (area.rules) ? area.rules : {};
-        //logger.info(`[onLiquidFlow] 区域 [${areaId}] 流动坐标在边界上，allowLiquidFlow = ${rule.allowLiquidFlow}`);
+        //logger.Debug(`[onLiquidFlow] 区域 [${areaId}] 流动坐标在边界上，allowLiquidFlow = ${rule.allowLiquidFlow}`);
         if (rule.allowLiquidFlow === false) {
-          //logger.info(`[onLiquidFlow] 拦截液体流入区域 [${areaId}] 边界, 坐标: ${JSON.stringify(to)}`);
+          //logger.Debug(`[onLiquidFlow] 拦截液体流入区域 [${areaId}] 边界, 坐标: ${JSON.stringify(to)}`);
           return false;
         }
       }
@@ -1487,62 +1790,62 @@ mc.listen("onLiquidFlow", function(from, to) {
 // 当方块位于某个区域内，而活塞不完全在区域内部（即位于区域外或正好在区域边界上），
 // 并且该区域规则禁止外部或边界活塞推动时，拦截该事件（返回 false）
 mc.listen("onPistonTryPush", function(pistonPos, block) {
-  logger.info(`[onPistonTryPush] 事件触发：活塞位置：${JSON.stringify(pistonPos)}, 被推动方块位置：${JSON.stringify(block.pos)}`);
+  logger.Debug(`[onPistonTryPush] 事件触发：活塞位置：${JSON.stringify(pistonPos)}, 被推动方块位置：${JSON.stringify(block.pos)}`);
 
   // 遍历所有区域，检测是否有区域内的方块被外部或边界活塞推动
   for (let areaId in areaData) {
     let area = areaData[areaId];
     if (!area || !area.pos1 || !area.pos2) {
-      logger.info(`[onPistonTryPush] 区域 ${areaId} 数据不完整，跳过检测`);
+      logger.Debug(`[onPistonTryPush] 区域 ${areaId} 数据不完整，跳过检测`);
       continue;
     }
 
     // 检查被推动的方块是否在当前区域内
     if (isPosInArea(block.pos, area)) {
-      logger.info(`[onPistonTryPush] 被推动方块位于区域 ${areaId}（名称：${area.nickname}）内`);
+      logger.Debug(`[onPistonTryPush] 被推动方块位于区域 ${areaId}（名称：${area.nickname}）内`);
 
       // 判断活塞是否完全在该区域内部（即活塞既在区域内且不在区域边界上）
       let pistonInside = isPosInArea(pistonPos, area) && !isPosOnAreaBoundary(pistonPos, area);
       if (!pistonInside) {
         if (!isPosInArea(pistonPos, area)) {
-          logger.info(`[onPistonTryPush] 活塞位置 ${JSON.stringify(pistonPos)} 不在区域 ${areaId} 内`);
+          logger.Debug(`[onPistonTryPush] 活塞位置 ${JSON.stringify(pistonPos)} 不在区域 ${areaId} 内`);
         } else if (isPosOnAreaBoundary(pistonPos, area)) {
-          logger.info(`[onPistonTryPush] 活塞位置 ${JSON.stringify(pistonPos)} 正在区域 ${areaId} 的边界上`);
+          logger.Debug(`[onPistonTryPush] 活塞位置 ${JSON.stringify(pistonPos)} 正在区域 ${areaId} 的边界上`);
         }
 
         let rule = area.rules;
         let allowPistonPush = rule && rule.allowPistonPush;
-        logger.info(`[onPistonTryPush] 区域规则 allowPistonPush=${allowPistonPush}`);
+        logger.Debug(`[onPistonTryPush] 区域规则 allowPistonPush=${allowPistonPush}`);
 
         // 如果该区域规则明确禁止外部/边界活塞推动，则拦截该操作
         if (allowPistonPush === false) {
-          logger.info(`[onPistonTryPush] 拦截操作：区域 ${areaId} 内的方块禁止被外部或边界活塞推动。`);
+          logger.Debug(`[onPistonTryPush] 拦截操作：区域 ${areaId} 内的方块禁止被外部或边界活塞推动。`);
           return false;
         } else {
-          logger.info(`[onPistonTryPush] 区域 ${areaId} 允许外部或边界活塞推动，继续检测其他区域（如果存在）。`);
+          logger.Debug(`[onPistonTryPush] 区域 ${areaId} 允许外部或边界活塞推动，继续检测其他区域（如果存在）。`);
         }
       } else {
-        logger.info(`[onPistonTryPush] 活塞完全位于区域 ${areaId} 内，允许推动。`);
+        logger.Debug(`[onPistonTryPush] 活塞完全位于区域 ${areaId} 内，允许推动。`);
       }
     } else {
-      logger.info(`[onPistonTryPush] 被推动方块不在区域 ${areaId} 内，继续检测下一个区域。`);
+      logger.Debug(`[onPistonTryPush] 被推动方块不在区域 ${areaId} 内，继续检测下一个区域。`);
     }
   }
 
-  logger.info(`[onPistonTryPush] 未检测到拦截条件，允许活塞推动。`);
+  logger.Debug(`[onPistonTryPush] 未检测到拦截条件，允许活塞推动。`);
   return true;
 });
 /*
 Event.listen("onEndermanTake", function(entity) {
   if (!entity) return true;
-  logger.info(`[onEndermanTake] 事件触发：末影人尝试搬起方块，坐标：${JSON.stringify(entity.type)}`);
+  logger.Debug(`[onEndermanTake] 事件触发：末影人尝试搬起方块，坐标：${JSON.stringify(entity.type)}`);
   let pos = entity.blockPos;
   for (let areaId in areaData) {
     let area = areaData[areaId];
     if (isPosInArea(pos, area)) {
       let rule = area.rules ? area.rules : {};
       if (rule.allowEndermanTake === false) {
-        logger.info(`拦截区域 [${areaId}] 内末影人搬起方块 (实体类型：末影人)`);
+        logger.Debug(`拦截区域 [${areaId}] 内末影人搬起方块 (实体类型：末影人)`);
         return false; // 拦截末影人搬起区域内方块的行为
       }
     }
@@ -1642,245 +1945,40 @@ function showModifyPermGroupSelectionForm(player) {
 function showModifyPermGroupForm(player, groupName) {
   let group = permGroupsData[groupName];
   if (!group) {
-      player.tell("权限组不存在。");
-      return;
-  }
-  // 如果是默认权限组，则只允许查看，不允许修改
-  if (defaultPermGroups.includes(groupName)) {
-    let fm = mc.newCustomForm();
-    fm.setTitle("查看默认权限组：" + groupName);
-    fm.addLabel("权限组名称：" + groupName);
-    fm.addLabel("允许破坏方块：" + (group.break ? "是" : "否"));
-    fm.addLabel("允许放置方块：" + (group.place ? "是" : "否"));
-    fm.addLabel("允许修改区域名称：" + (group.allowRename ? "是" : "否"));
-    fm.addLabel("允许管理区域：" + (group.manage ? "是" : "否"));
-    fm.addLabel("允许管理区域规则：" + ((group.manageRules) ? "是" : "否"));
-    fm.addLabel("允许攻击实体：" + (group.attack ? "是" : "否"));
-    fm.addLabel("允许操作物品展示框：" + ((group.useframe) ? "是" : "否"));
-    fm.addLabel("允许捡起物品：" + (group.takeitem ? "是" : "否"));
-    fm.addLabel("允许丢出物品：" + (group.dropitem ? "是" : "否"));
-    fm.addLabel("允许使用床：" + (group.bedenter ? "是" : "否"));
-    fm.addLabel("允许交互实体：" + (group.interactentity ? "是" : "否"));
-    fm.addLabel("允许与方块交互：" + (group.interactblock ? "是" : "否"));
-    fm.addLabel("允许骑乘实体：" + (group.ride ? "是" : "否"));
-    fm.addLabel("允许操控盔甲架：" + (group.armorstand ? "是" : "否"));
-    fm.addLabel("允许打开箱子：" + ((group.open && group.open.chest) ? "是" : "否"));
-    fm.addLabel("允许打开潜影盒：" + ((group.open && group.open.shulker) ? "是" : "否"));
-    fm.addLabel("允许打开漏斗：" + ((group.open && group.open.hopper) ? "是" : "否"));
-    fm.addLabel("允许打开末影箱：" + ((group.open && group.open.enderchest) ? "是" : "否"));
-    fm.addLabel("允许打开发射器：" + ((group.open && group.open.dispenser) ? "是" : "否"));
-    fm.addLabel("允许打开投掷器：" + ((group.open && group.open.dropper) ? "是" : "否"));
-    fm.addLabel("允许打开熔炉：" + ((group.open && group.open.furnace) ? "是" : "否"));
-    fm.addLabel("允许打开高炉：" + ((group.open && group.open.blastfurnace) ? "是" : "否"));
-    fm.addLabel("允许打开其他容器：" + ((group.open && typeof group.open.container === "boolean") ? (group.open.container ? "是" : "否") : "否"));
-    fm.addLabel("允许打开砂轮：" + ((group.open && group.open.grindstone) ? "是" : "否"));
-    fm.addLabel("允许打开铁砧：" + ((group.open && group.open.anvil) ? "是" : "否"));
-    fm.addLabel("允许打开木桶：" + ((group.open && group.open.barrel) ? "是" : "否"));
-    fm.addLabel("允许打开合成器：" + ((group.open && group.open.crafter) ? "是" : "否"));
-    fm.addLabel("允许打开陷阱箱：" + ((group.open && group.open.trappedchest) ? "是" : "否"));
-    fm.addLabel("允许打开工作台：" + ((group.open && group.open.crafting) ? "是" : "否"));
-    fm.addLabel("允许打开附魔台：" + ((group.open && group.open.enchanting) ? "是" : "否"));
-    fm.addLabel("允许打开制图台：" + ((group.open && group.open.cartography) ? "是" : "否"));
-    fm.addLabel("允许打开烟熏炉：" + ((group.open && group.open.smoker) ? "是" : "否"));
-    fm.addLabel("允许打开锻造台：" + ((group.open && group.open.smithing) ? "是" : "否"));
-    fm.addLabel("允许打开信标：" + ((group.open && group.open.beacon) ? "是" : "否"));
-    fm.addLabel("允许打开切石机：" + ((group.open && group.open.stonecutter) ? "是" : "否"));
-    fm.addLabel("允许打开酿造台：" + ((group.open && group.open.brewingstand) ? "是" : "否"));
-    fm.addLabel("允许此权限组让其他区域管理员赋权：" + ((group.allowAssignByManagers === false) ? "否" : "是"));
-    fm.addLabel("允许操作物品展示框：" + ((group.useframe) ? "是" : "否"));
-    fm.addLabel("允许打开锻造台：" + ((group.open && group.open.smithing) ? "是" : "否"));
-    fm.addLabel("容器例外：" + ((group.open && group.open.exceptions && group.open.exceptions.length > 0) ? group.open.exceptions.join(", ") : "无"));
-    fm.addLabel("默认权限组不可修改，仅供查看。");
-    player.sendForm(fm, (player, data) => {
-      player.tell("默认权限组为只读状态。");
-    });
+    player.tell("权限组不存在！");
     return;
   }
-  // 对于非默认权限组，只有创建者（owners）可以修改
   if (!group.owners || !group.owners.includes(player.uuid)) {
     player.tell("你没有权限修改该权限组！");
     return;
   }
   let fm = mc.newCustomForm();
   fm.setTitle("修改权限组：" + groupName);
-  fm.addInput("修改权限组名称 (留空则保持不变)", "例如：vip", "");
-  fm.addSwitch("允许破坏方块", group.break);
-  fm.addSwitch("允许放置方块", group.place);
-  fm.addSwitch("允许修改区域名称", group.allowRename);
-  fm.addSwitch("允许管理区域", group.manage);
-  fm.addSwitch("允许管理区域规则", group.manageRules ? true : false);
-  fm.addSwitch("允许攻击实体", group.attack ? true : false);
-  fm.addSwitch("允许打开箱子", (group.open && group.open.chest) ? true : false);
-  fm.addSwitch("允许打开潜影盒", (group.open && group.open.shulker) ? true : false);
-  fm.addSwitch("允许打开漏斗", (group.open && group.open.hopper) ? true : false);
-  fm.addSwitch("允许打开末影箱", (group.open && group.open.enderchest) ? true : false);
-  fm.addSwitch("允许打开发射器", (group.open && group.open.dispenser) ? true : false);
-  fm.addSwitch("允许打开投掷器", (group.open && group.open.dropper) ? true : false);
-  fm.addSwitch("允许打开熔炉", (group.open && group.open.furnace) ? true : false);
-  fm.addSwitch("允许打开高炉", (group.open && group.open.blastfurnace) ? true : false);
-  fm.addSwitch("其他容器", (group.open && typeof group.open.container === "boolean") ? group.open.container : false);
-  fm.addSwitch("允许打开砂轮", (group.open && group.open.grindstone) ? true : false);
-  fm.addSwitch("允许打开铁砧", (group.open && group.open.anvil) ? true : false);
-  fm.addSwitch("允许打开木桶", (group.open && group.open.barrel) ? true : false);
-  fm.addSwitch("允许打开合成器", (group.open && group.open.crafter) ? true : false);
-  fm.addSwitch("允许打开陷阱箱", (group.open && group.open.trappedchest) ? true : false);
-  fm.addSwitch("允许打开工作台", (group.open && group.open.crafting) ? true : false);
-  fm.addSwitch("允许打开附魔台", (group.open && group.open.enchanting) ? true : false);
-  fm.addSwitch("允许打开制图台", (group.open && group.open.cartography) ? true : false);
-  fm.addSwitch("允许打开烟熏炉", (group.open && group.open.smoker) ? true : false);
-  fm.addSwitch("允许打开锻造台", (group.open && group.open.smithing) ? true : false);
-  fm.addSwitch("允许打开信标", (group.open && group.open.beacon) ? true : false);
-  fm.addSwitch("允许打开切石机", (group.open && group.open.stonecutter) ? true : false);
-  fm.addSwitch("允许打开酿造台", (group.open && group.open.brewingstand) ? true : false);
-  fm.addSwitch("允许捡起物品", group.takeitem ? true : false);
-  fm.addSwitch("允许丢出物品", group.dropitem ? true : false);
-  fm.addSwitch("允许使用床", group.bedenter ? true : false);
-  fm.addSwitch("允许交互实体", group.interactentity ? true : false);
-  fm.addSwitch("允许与方块交互", group.interactblock ? true : false);
-  fm.addSwitch("允许骑乘实体", group.ride ? true : false);
-  fm.addSwitch("允许操控盔甲架", group.armorstand ? true : false);
-  fm.addSwitch("允许此权限组让其他区域管理员赋权", group.allowAssignByManagers !== false);
-  fm.addSwitch("允许操作物品展示框", group.useframe ? true : false);
-  fm.addInput("容器例外（多个以逗号隔开）", "例如：mod:custom_container,mod:another_container", (group.open && group.open.exceptions) ? group.open.exceptions.join(",") : "");
+  // 添加修改名称的输入项（留空则保持不变）
+  fm.addInput("修改权限组名称(留空则保持不变)", "例如：vip", "");
+  let mapping = [];
+  buildPermissionFormFields(fm, permissionConfigs, group, mapping);
   player.sendForm(fm, (player, data) => {
-      if (data === null) return;
-      let newGroupName = data[0].trim();
-      let allowBreak = data[1];
-      let allowPlace = data[2];
-      let allowRename = data[3];
-      let allowManage = data[4];
-      let allowManageRules = data[5];
-      let allowAttack = data[6]; // 新增：攻击实体权限
-      let allowChest = data[7];
-      let allowShulker = data[8];
-      let allowHopper = data[9];
-      let allowEnderChest = data[10];
-      let allowDispenser = data[11];
-      let allowDropper = data[12];
-      let allowFurnace = data[13];
-      let allowBlastFurnace = data[14];
-      let allowContainer = data[15];
-      let allowGrindstone = data[16];
-      let allowAnvil = data[17];
-      let allowBarrel = data[18];
-      let allowCrafter = data[19];
-      let allowTrappedChest = data[20];
-      let allowCrafting = data[21];
-      let allowEnchanting = data[22];
-      let allowCartography = data[23];
-      let allowSmoker = data[24];
-      let allowSmithing = data[25];  
-      let allowBeacon = data[26];
-      let allowStonecutter = data[27];
-      let allowBrewingStand = data[28];
-      let allowTakeItem     = data[29]; // 新增：允许捡起物品
-      let allowDropItem     = data[30]; // 新增：允许丢出物品
-      let allowBedenter       = data[31];
-      let allowInteractEntity = data[32];
-      let allowInteractBlock  = data[33];
-      let allowRide           = data[34];
-      let allowArmorstand     = data[35];
-      let allowAssign       = data[36];
-      let allowUseFrame     = data[37];
-      let exceptionsStr     = data[38].trim();
-      let exceptionsList = exceptionsStr.length > 0 ? exceptionsStr.split(",").map(s => s.trim()).filter(s => s.length > 0) : [];
-      if (newGroupName !== "" && newGroupName !== groupName) {
-          if (permGroupsData[newGroupName]) {
-              player.tell("该权限组名称已存在，重命名失败。");
-              return;
-          }
-          // 重命名时保留原 owners 信息
-          permGroupsData[newGroupName] = { 
-            break: allowBreak, 
-            place: allowPlace, 
-            allowRename: allowRename,
-            manage: allowManage,
-            manageRules: allowManageRules,
-            attack: allowAttack,
-            takeitem: allowTakeItem,      // 更新捡起物品配置
-            dropitem: allowDropItem,      // 更新丢出物品配置
-            bedenter: allowBedenter,
-            interactentity: allowInteractEntity,
-            interactblock: allowInteractBlock,
-            ride: allowRide,
-            armorstand: allowArmorstand,
-            open: { 
-              chest: allowChest, 
-              shulker: allowShulker,
-              hopper: allowHopper,
-              enderchest: allowEnderChest,
-              dispenser: allowDispenser,
-              dropper: allowDropper,
-              furnace: allowFurnace,
-              blastfurnace: allowBlastFurnace,
-              container: allowContainer,
-              grindstone: allowGrindstone,
-              anvil: allowAnvil,
-              barrel: allowBarrel,
-              crafter: allowCrafter,
-              trappedchest: allowTrappedChest,
-              crafting: allowCrafting,
-              enchanting: allowEnchanting,
-              cartography: allowCartography,
-              smoker: allowSmoker,
-              smithing: allowSmithing,
-              beacon: allowBeacon,
-              stonecutter: allowStonecutter,
-              brewingstand: allowBrewingStand,
-              exceptions: exceptionsList
-          },
-          allowAssignByManagers: allowAssign,
-          useframe: allowUseFrame,  
-            owners: group.owners 
-        };
-          delete permGroupsData[groupName];
-          player.tell(`权限组已重命名为：${newGroupName}，设置已更新。`);
-      } else {
-          permGroupsData[groupName].break = allowBreak;
-          permGroupsData[groupName].place = allowPlace;
-          permGroupsData[groupName].allowRename = allowRename;
-          permGroupsData[groupName].manage = allowManage;
-          permGroupsData[groupName].manageRules = allowManageRules;
-          permGroupsData[groupName].attack = allowAttack;
-          permGroupsData[groupName].takeitem    = allowTakeItem;
-          permGroupsData[groupName].dropitem    = allowDropItem;
-          permGroupsData[groupName].bedenter = allowBedenter;
-          permGroupsData[groupName].interactentity = allowInteractEntity;
-          permGroupsData[groupName].interactblock = allowInteractBlock;
-          permGroupsData[groupName].ride = allowRide;
-          permGroupsData[groupName].armorstand = allowArmorstand;
-          permGroupsData[groupName].open = { 
-            chest: allowChest, 
-            shulker: allowShulker,
-            hopper: allowHopper,
-            enderchest: allowEnderChest,
-            dispenser: allowDispenser,
-            dropper: allowDropper,
-            furnace: allowFurnace,
-            blastfurnace: allowBlastFurnace,
-            container: allowContainer,
-            grindstone: allowGrindstone,
-            anvil: allowAnvil,
-            barrel: allowBarrel,
-            crafter: allowCrafter,
-            trappedchest: allowTrappedChest,
-            crafting: allowCrafting,
-            enchanting: allowEnchanting,
-            cartography: allowCartography,
-            smoker: allowSmoker,
-            smithing: allowSmithing,
-            beacon: allowBeacon,
-            stonecutter: allowStonecutter,
-            brewingstand: allowBrewingStand,
-            exceptions: exceptionsList
-          };
-          permGroupsData[groupName].allowAssignByManagers = allowAssign; // 更新新字段
-          permGroupsData[groupName].useframe = allowUseFrame;
-          player.tell(`权限组 ${groupName} 设置已更新。`);
+    if (data === null) return;
+    let newNameInput = data[0].trim(); // 第一个输入项为名称修改
+    let permsData = buildDataFromFormResult(mapping, data.slice(1));
+    if (newNameInput !== "" && newNameInput !== groupName) {
+      if (permGroupsData[newNameInput]) {
+        player.tell("该权限组名称已存在，重命名失败。");
+        return;
       }
-      savePermGroupsData();
+      permsData.owners = group.owners;
+      permGroupsData[newNameInput] = permsData;
+      delete permGroupsData[groupName];
+      player.tell(`权限组已重命名为：${newNameInput}，设置已更新。`);
+    } else {
+      permGroupsData[groupName] = Object.assign(group, permsData);
+      player.tell(`权限组 ${groupName} 设置已更新。`);
+    }
+    savePermGroupsData();
   });
 }
+
 /* ===============================
  【新增】添加权限组
 =============================== */
@@ -1888,105 +1986,25 @@ function showAddPermGroupForm(player) {
   let fm = mc.newCustomForm();
   fm.setTitle("添加权限组");
   fm.addInput("权限组名称", "例如：vip", "");
-  fm.addSwitch("允许破坏方块", false);
-  fm.addSwitch("允许放置方块", false);
-  fm.addSwitch("允许修改区域名称", false);
-  fm.addSwitch("允许管理区域", false); // 新增管理区域开关
-  fm.addSwitch("允许管理区域规则", false);
-  fm.addSwitch("允许攻击实体", false);
-  fm.addSwitch("允许打开箱子", false);
-  fm.addSwitch("允许打开潜影盒", false);
-  fm.addSwitch("允许打开漏斗", false);
-  fm.addSwitch("允许打开末影箱", false);
-  fm.addSwitch("允许打开发射器", false);
-  fm.addSwitch("允许打开投掷器", false);
-  fm.addSwitch("允许打开熔炉", false);
-  fm.addSwitch("允许打开高炉", false);
-  fm.addSwitch("允许打开其他容器", false);
-  fm.addSwitch("允许打开砂轮", false);
-  fm.addSwitch("允许打开铁砧", false);
-  fm.addSwitch("允许打开木桶", false);
-  fm.addSwitch("允许打开合成器", false);
-  fm.addSwitch("允许打开陷阱箱", false);
-  fm.addSwitch("允许打开工作台", false);
-  fm.addSwitch("允许打开附魔台", false);
-  fm.addSwitch("允许打开制图台", false);
-  fm.addSwitch("允许打开锻造台", false);    
-  fm.addSwitch("允许打开烟熏炉", false);
-  fm.addSwitch("允许打开信标", false);
-  fm.addSwitch("允许打开切石机", false);
-  fm.addSwitch("允许打开酿造台", false);
-  fm.addSwitch("允许捡起物品", false);
-  fm.addSwitch("允许丢出物品", false);
-  fm.addSwitch("允许使用床", false);
-  fm.addSwitch("允许交互实体", false);
-  fm.addSwitch("允许与方块交互", false);
-  fm.addSwitch("允许骑乘实体", false);
-  fm.addSwitch("允许操控盔甲架", false);
-  fm.addSwitch("允许此权限组让其他区域管理员赋权", true);
-  fm.addSwitch("允许操作物品展示框", false);  
-  fm.addInput("容器例外（多个以逗号隔开）", "例如：mod:custom_container,mod:another_container", "");
-
+  let mapping = [];
+  buildPermissionFormFields(fm, permissionConfigs, {}, mapping);
   player.sendForm(fm, (player, data) => {
-      if (data === null) return;
-      let groupName = data[0].trim();
-      if (groupName === "") {
-          player.tell("权限组名称不能为空！");
-          return;
-      }
-      if (permGroupsData[groupName]) {
-          player.tell("该权限组已存在！");
-          return;
-      }
-      let exceptionsStr = data[38].trim();
-      let exceptionsList = exceptionsStr.length > 0 ? exceptionsStr.split(",").map(s => s.trim()).filter(s => s.length > 0) : [];
-      // 创建自定义权限组，包括新的 allowAssignByManagers 配置
-      permGroupsData[groupName] = { 
-        break: data[1], 
-        place: data[2], 
-        allowRename: data[3],
-        manage: data[4],
-        manageRules: data[5],
-        allowAttack: data[6],
-        open: { 
-            chest: data[7],        // 箱子
-            shulker: data[8],       // 潜影盒
-            hopper: data[9],        // 漏斗
-            enderchest: data[10],    // 末影箱
-            dispenser: data[11],     // 发射器
-            dropper: data[12],      // 投掷器
-            furnace: data[13],      // 熔炉
-            blastfurnace: data[14], // 高炉
-            container: data[15],     // 其他容器
-            grindstone: data[16],      // 砂轮
-            anvil: data[17],           // 铁砧（包括 anvil、chipped_anvil、damaged_anvil）
-            barrel: data[18],          // 木桶
-            crafter: data[19],         // 合成器
-            trappedchest: data[20],    // 陷阱箱
-            crafting: data[21],        // 工作台
-            enchanting: data[22],      // 附魔台
-            cartography: data[23],     // 制图台
-            smoker: data[24],          // 烟熏炉
-            smithing: data[25],             // 【新增】锻造台权限设置
-            beacon: data[26],
-            stonecutter: data[27],
-            brewingstand: data[28],     // 酿造台
-            exceptions: exceptionsList
-        },
-        takeitem: data[29],
-        dropitem: data[30],
-        bedenter: data[31],
-        interactentity: data[32],
-        interactblock: data[33],
-        ride: data[34],
-        armorstand: data[35],
-        allowAssignByManagers: data[36],
-        useframe: data[37],
-        owners: [player.uuid]
-    };
+    if (data === null) return;
+    let groupName = data[0].trim();
+    if (groupName === "") {
+      player.tell("权限组名称不能为空！");
+      return;
+    }
+    if (permGroupsData[groupName]) {
+      player.tell("该权限组已存在！");
+      return;
+    }
+    let permsData = buildDataFromFormResult(mapping, data.slice(1));
+    permsData.owners = [player.uuid];
+    permGroupsData[groupName] = permsData;
     savePermGroupsData();
     player.tell(`权限组 ${groupName} 添加成功！`);
-});
+  });
 }
 
 /* ===============================
@@ -2023,6 +2041,128 @@ function showDeletePermGroupForm(player) {
   });
 }
 
+// 定义所有权限项的配置
+const permissionConfigs = {
+  break: { label: "允许破坏方块", type: "bool", default: false },
+  place: { label: "允许放置方块", type: "bool", default: false },
+  allowRename: { label: "允许修改区域名称", type: "bool", default: false },
+  manage: { label: "允许管理区域", type: "bool", default: false },
+  manageRules: { label: "允许管理区域规则", type: "bool", default: false },
+  attack: { label: "允许攻击实体", type: "bool", default: false },
+  takeitem: { label: "允许捡起物品", type: "bool", default: false },
+  dropitem: { label: "允许丢出物品", type: "bool", default: false },
+  bedenter: { label: "允许使用床", type: "bool", default: false },
+  interactentity: { label: "允许交互实体", type: "bool", default: false },
+  interactdoor: { label: "允许操作门", type: "bool", default: false },
+  interacttrapdoor: { label: "允许操作活板门", type: "bool", default: false },
+  interactbutton: { label: "允许操作按钮", type: "bool", default: false },
+  interactlever: { label: "允许操作拉杆", type: "bool", default: false },
+  interactfencegate: { label: "允许操作栅栏门", type: "bool", default: false },
+  interactjukebox: { label: "允许使用唱片机", type: "bool", default: false },
+  interactnoteblock: { label: "允许使用音符盒", type: "bool", default: false },
+  interactrepeater: { label: "允许使用红石中继器", type: "bool", default: false },
+  interactcomparator: { label: "允许使用红石比较器", type: "bool", default: false },
+  interactlectern: { label: "允许使用讲台", type: "bool", default: false },
+  interactothers: { label: "允许操作其他方块", type: "bool", default: false },
+  interactothers_exceptions: { label: "其他方块互动例外名单", type: "string", default: "" },
+  stepPressurePlate: { label: "允许踩压力板", type: "bool", default: false },
+  ride: { label: "允许骑乘实体", type: "bool", default: false },
+  armorstand: { label: "允许操控盔甲架", type: "bool", default: false },
+  open: {
+    type: "object",
+    fields: {
+      chest: { label: "允许打开箱子", type: "bool", default: false },
+      shulker: { label: "允许打开潜影盒", type: "bool", default: false },
+      hopper: { label: "允许打开漏斗", type: "bool", default: false },
+      enderchest: { label: "允许打开末影箱", type: "bool", default: false },
+      dispenser: { label: "允许打开发射器", type: "bool", default: false },
+      dropper: { label: "允许打开投掷器", type: "bool", default: false },
+      furnace: { label: "允许打开熔炉", type: "bool", default: false },
+      blastfurnace: { label: "允许打开高炉", type: "bool", default: false },
+      container: { label: "允许打开其他容器", type: "bool", default: false },
+      grindstone: { label: "允许打开砂轮", type: "bool", default: false },
+      anvil: { label: "允许打开铁砧", type: "bool", default: false },
+      barrel: { label: "允许打开木桶", type: "bool", default: false },
+      crafter: { label: "允许打开合成器", type: "bool", default: false },
+      trappedchest: { label: "允许打开陷阱箱", type: "bool", default: false },
+      crafting: { label: "允许打开工作台", type: "bool", default: false },
+      enchanting: { label: "允许打开附魔台", type: "bool", default: false },
+      cartography: { label: "允许打开制图台", type: "bool", default: false },
+      smoker: { label: "允许打开烟熏炉", type: "bool", default: false },
+      smithing: { label: "允许打开锻造台", type: "bool", default: false },
+      beacon: { label: "允许打开信标", type: "bool", default: false },
+      stonecutter: { label: "允许打开切石机", type: "bool", default: false },
+      brewingstand: { label: "允许打开酿造台", type: "bool", default: false },
+      exceptions: { label: "例外容器", type: "string", default: "" }
+    }
+  },
+  allowAssignByManagers: { label: "允许此权限组让其他区域管理员赋权", type: "bool", default: true },
+  editsign: { label:"允许编辑告示牌", type:"bool", default:false },
+  useframe: { label:"允许操作物品展示框", type:"bool", default:false },
+};
+
+/*
+  辅助函数说明：
+  1. buildPermissionFormFields(form, configObj, dataObj, mapping, prefix)
+     - 根据 permissionConfigs（或其子对象）动态为表单添加 Switch 和 Label 控件
+     - 同时将每个 Switch 对应的权限键（支持嵌套，如 "open.chest"）保存在 mapping 数组中
+
+  2. buildDataFromFormResult(mapping, formData)
+     - 根据 mapping 数组和表单回传的线性数据，构造一个多层次的权限配置对象
+*/
+
+// 生成表单项并记录顺序映射（mapping 数组存储了每个输入项对应的权限键路径）
+function buildPermissionFormFields(form, configObj, dataObj, mapping, prefix = "") {
+  for (let key in configObj) {
+    let field = configObj[key];
+    let fieldKey = prefix ? `${prefix}.${key}` : key;
+    if (field.type === "bool") {
+      let label = field.label || key;
+      let defaultValue = (dataObj && typeof dataObj[key] !== "undefined") ? dataObj[key] : field.default;
+      form.addSwitch(label, defaultValue);
+      mapping.push({ key: fieldKey, type: field.type });
+    } else if (field.type === "string") {
+      let label = field.label || key;
+      let defaultValue = (dataObj && typeof dataObj[key] === "string") ? dataObj[key] : field.default;
+      form.addInput(label, "", defaultValue);
+      mapping.push({ key: fieldKey, type: field.type });
+    } else if (field.type === "object" && field.fields) {
+      form.addLabel(`----- ${key} -----`);
+      buildPermissionFormFields(form, field.fields, dataObj ? dataObj[key] : null, mapping, fieldKey);
+    }
+  }
+}
+
+// 根据 mapping 数组和表单返回的线性数据生成嵌套对象
+function buildDataFromFormResult(mapping, formData) {
+  let result = {};
+  for (let i = 0; i < mapping.length; i++) {
+    let mapObj = mapping[i];
+    let keyPath = mapObj.key.split(".");
+    let current = result;
+    for (let j = 0; j < keyPath.length - 1; j++) {
+      let part = keyPath[j];
+      if (!current[part]) {
+        current[part] = {};
+      }
+      current = current[part];
+    }
+    let finalValue;
+    if (mapObj.type === "string") {
+      // 如果 formData[i] 为 undefined 则用空字符串代替
+      finalValue = formData[i] || "";
+      if (typeof finalValue === "string" && finalValue.trim() !== "") {
+        finalValue = finalValue.split(",").map(x => x.trim()).filter(x => x !== "");
+      } else {
+        finalValue = [];
+      }
+    } else {
+      finalValue = formData[i];
+    }
+    current[keyPath[keyPath.length - 1]] = finalValue;
+  }
+  return result;
+}
 /**
  * 显示设 置玩家权限组的表单：批量设置区域成员的权限组
  * 此表单显示所有玩家（包括离线玩家），支持搜索和分页，用户可以批量选择玩家然后设置其权限组。
@@ -2194,64 +2334,144 @@ function checkPlayerAreas() {
 // 注册定时任务，每秒执行一次区域检测
 setInterval(checkPlayerAreas, 1000);
 
-// 修改后的 reselectAreaRange 函数：使用原来的 isAreaOverlap 检查新范围
+//  重新设置新范围
 function reselectAreaRange(player, areaId) {
   let temp = playerTempPoints[player.uuid];
   if (!temp || !temp.pos1 || !temp.pos2) {
-      player.tell("请先使用 /area pos1 和 /area pos2 命令设置新的范围！");
-      return;
+    player.tell("请先使用 /area pos1 和 /area pos2 命令设置新的范围！");
+    return;
   }
   if (temp.dimid1 !== temp.dimid2) {
-      player.tell("错误：两个点必须在同一维度！");
-      return;
+    player.tell("错误：两个点必须在同一维度！");
+    return;
   }
 
+  // 构造新区域对象
   let newArea = {
-      pos1: temp.pos1,
-      pos2: temp.pos2
+    pos1: temp.pos1,
+    pos2: temp.pos2
   };
 
-  // 为避免当前区域自身干扰，将当前区域先暂时移除
-  let backupArea = areaData[areaId];
-  delete areaData[areaId];
+  // 检查新区域是否与其他区域（排除当前区域）重叠
+  for (let id in areaData) {
+    if (id === areaId) continue;
+    let existArea = areaData[id];
+    if (!existArea || !existArea.pos1 || !existArea.pos2) continue;
+    // 若两个区域不在同一维度，则跳过判断
+    if (newArea.pos1.dim !== existArea.pos1.dim) continue;
 
-  // 使用原来的 isAreaOverlap 函数判断新范围是否与其他区域重叠
-  if (isAreaOverlap(newArea)) {
-      // 恢复当前区域数据
-      areaData[areaId] = backupArea;
+    let newMinX = Math.min(newArea.pos1.x, newArea.pos2.x);
+    let newMaxX = Math.max(newArea.pos1.x, newArea.pos2.x);
+    let newMinY = Math.min(newArea.pos1.y, newArea.pos2.y);
+    let newMaxY = Math.max(newArea.pos1.y, newArea.pos2.y);
+    let newMinZ = Math.min(newArea.pos1.z, newArea.pos2.z);
+    let newMaxZ = Math.max(newArea.pos1.z, newArea.pos2.z);
+
+    let existMinX = Math.min(existArea.pos1.x, existArea.pos2.x);
+    let existMaxX = Math.max(existArea.pos1.x, existArea.pos2.x);
+    let existMinY = Math.min(existArea.pos1.y, existArea.pos2.y);
+    let existMaxY = Math.max(existArea.pos1.y, existArea.pos2.y);
+    let existMinZ = Math.min(existArea.pos1.z, existArea.pos2.z);
+    let existMaxZ = Math.max(existArea.pos1.z, existArea.pos2.z);
+
+    if (
+      newMinX <= existMaxX && newMaxX >= existMinX &&
+      newMinY <= existMaxY && newMaxY >= existMinY &&
+      newMinZ <= existMaxZ && newMaxZ >= existMinZ
+    ) {
       player.tell("新范围与其他区域重叠，更新失败！");
       return;
+    }
   }
-  // 恢复当前区域数据
-  areaData[areaId] = backupArea;
 
-  let size = {
-      x: Math.abs(temp.pos2.x - temp.pos1.x) + 1,
-      y: Math.abs(temp.pos2.y - temp.pos1.y) + 1,
-      z: Math.abs(temp.pos2.z - temp.pos1.z) + 1
+  // 计算新区域尺寸
+  let newSize = {
+    x: Math.abs(temp.pos2.x - temp.pos1.x) + 1,
+    y: Math.abs(temp.pos2.y - temp.pos1.y) + 1,
+    z: Math.abs(temp.pos2.z - temp.pos1.z) + 1
   };
 
-  // 使用和创建区域时类似的自定义表单确认新的范围
+  // 计算当前区域尺寸（直接根据保存的数据计算）
+  let currentArea = areaData[areaId];
+  let oldSize = {
+    x: Math.abs(currentArea.pos2.x - currentArea.pos1.x) + 1,
+    y: Math.abs(currentArea.pos2.y - currentArea.pos1.y) + 1,
+    z: Math.abs(currentArea.pos2.z - currentArea.pos1.z) + 1
+  };
+
+  // 根据已有 formula 计算费用
+  let newCost = computeAreaCost(newSize);
+  let oldCost = computeAreaCost(oldSize);
+  let costDifference = newCost - oldCost;
+  const REFUND_RATE = 0.5; // 此处设置为 50% 退款率，可根据需要调整
+
+  let econMessage = "";
+  if (enableEconomy) {
+    if (costDifference > 0) {
+      econMessage = `新区域费用为 ${newCost} 金币，比原区域费用 ${oldCost} 金币多出 ${costDifference} 金币，你需要补足差额。`;
+    } else if (costDifference < 0) {
+      let refund = Math.floor(Math.abs(costDifference) * REFUND_RATE);
+      econMessage = `新区域费用为 ${newCost} 金币，比原区域费用 ${oldCost} 金币节省 ${Math.abs(costDifference)} 金币，你将获得 ${refund} 金币的部分退款。`;
+    } else {
+      econMessage = `区域费用无变化（${newCost} 金币）。`;
+    }
+  } else {
+    econMessage = "经济系统未启用，直接更新区域范围。";
+  }
+
+  // 显示新范围确认表单，同时展示经济调整信息
   let fm = mc.newCustomForm();
   fm.setTitle("确认更新区域范围");
-  fm.addLabel(`新起点坐标: ${temp.pos1.x}, ${temp.pos1.y}, ${temp.pos1.z}`);
-  fm.addLabel(`新终点坐标: ${temp.pos2.x}, ${temp.pos2.y}, ${temp.pos2.z}`);
-  fm.addLabel(`区域大小: ${size.x}x${size.y}x${size.z}`);
+  fm.addLabel(`新起点坐标：${temp.pos1.x}, ${temp.pos1.y}, ${temp.pos1.z}`);
+  fm.addLabel(`新终点坐标：${temp.pos2.x}, ${temp.pos2.y}, ${temp.pos2.z}`);
+  fm.addLabel(`新区域大小：${newSize.x} x ${newSize.y} x ${newSize.z}`);
+  if (enableEconomy) {
+    fm.addLabel(econMessage);
+  }
   fm.addLabel("确认更新区域范围吗？");
 
   player.sendForm(fm, (player, data) => {
-      if (data === null) {
-          player.tell("已取消更新区域范围！");
+    if (data === null) {
+      player.tell("已取消更新区域范围！");
+      return;
+    }
+    // 如果启用了经济系统，则先处理对应的费用差额
+    if (enableEconomy) {
+      if (costDifference > 0) {
+        // 补差：检查并扣除额外费用
+        let playerMoney = 0;
+        if (economyType === "llmoney") {
+          playerMoney = money.get(player.xuid);
+        } else if (economyType === "czmoney") {
+          playerMoney = czGetMoney(player.xuid);
+        }
+        if (playerMoney < costDifference) {
+          player.tell(`你需要额外支付 ${costDifference} 金币，但当前余额不足（${playerMoney} 金币）！`);
           return;
+        }
+        if (economyType === "llmoney") {
+          money.reduce(player.xuid, costDifference);
+        } else if (economyType === "czmoney") {
+          czReduceMoney(player.xuid, costDifference);
+        }
+      } else if (costDifference < 0) {
+        // 退款：仅退还部分差额
+        let refund = Math.floor(Math.abs(costDifference) * REFUND_RATE);
+        if (economyType === "llmoney") {
+          money.add(player.xuid, refund);
+        } else if (economyType === "czmoney") {
+          czAddMoney(player.xuid, refund);
+        }
       }
-      // 更新区域数据
-      areaData[areaId].pos1 = temp.pos1;
-      areaData[areaId].pos2 = temp.pos2;
-      areaData[areaId].size = size;
-      saveAreaData();
-      player.tell("区域范围更新成功！");
-      // 清除玩家的临时数据
-      delete playerTempPoints[player.uuid];
+    }
+    // 安全更新区域数据（不删除现有数据，只更新范围信息）
+    currentArea.pos1 = temp.pos1;
+    currentArea.pos2 = temp.pos2;
+    currentArea.size = newSize;
+    saveAreaData();
+    player.tell("区域范围更新成功！");
+    // 清除该玩家的临时选择数据
+    delete playerTempPoints[player.uuid];
   });
 }
 
