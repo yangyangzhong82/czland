@@ -1,5 +1,5 @@
 // playerSettings.js
-const SETTINGS_PATH = './plugins/area/playerSettings.json';
+const { getDbSession } = require('./database');
 const DEFAULT_SETTINGS = {
     displayActionBar: true,    // 是否显示ActionBar
     displayTitle: true,        // 是否显示标题
@@ -29,20 +29,65 @@ function savePlayerSettings(settings) {
 
 // 获取玩家设置
 function getPlayerSettings(uuid) {
-    const settings = loadPlayerSettings();
-    if (!settings[uuid]) {
-        settings[uuid] = {...DEFAULT_SETTINGS};
-        savePlayerSettings(settings);
+    try {
+        const db = getDbSession();
+        const stmt = db.prepare(`
+            SELECT displayActionBar, displayTitle, displayCooldown
+            FROM player_settings
+            WHERE uuid = ?
+        `);
+        
+        stmt.bind(uuid);
+        stmt.execute();
+        
+        // 如果找到记录，返回设置
+        if(stmt.step()) {
+            const row = stmt.fetch();
+            return {
+                displayActionBar: row.displayActionBar === 1,
+                displayTitle: row.displayTitle === 1,
+                displayCooldown: row.displayCooldown
+            };
+        }
+        
+        // 如果没有找到，创建默认设置
+        const defaultSettings = {...DEFAULT_SETTINGS};
+        updatePlayerSettings(uuid, defaultSettings);
+        return defaultSettings;
+    } catch(e) {
+        logger.error(`获取玩家设置失败: ${e}`);
+        return {...DEFAULT_SETTINGS};
     }
-    return settings[uuid];
 }
 
 // 更新玩家设置
 function updatePlayerSettings(uuid, newSettings) {
-    const settings = loadPlayerSettings();
-    settings[uuid] = {...DEFAULT_SETTINGS, ...newSettings};
-    return savePlayerSettings(settings);
+    try {
+        const db = getDbSession();
+        const stmt = db.prepare(`
+            INSERT OR REPLACE INTO player_settings (uuid, displayActionBar, displayTitle, displayCooldown)
+            VALUES (?, ?, ?, ?)
+        `);
+        
+        // 合并默认设置和新设置
+        const settings = {...DEFAULT_SETTINGS, ...newSettings};
+        
+        stmt.bind([
+            uuid,
+            settings.displayActionBar ? 1 : 0,
+            settings.displayTitle ? 1 : 0,
+            settings.displayCooldown || 2000
+        ]);
+        
+        stmt.execute();
+        logger.info(`成功更新玩家${uuid}的设置`);
+        return true;
+    } catch(e) {
+        logger.error(`更新玩家设置失败: ${e}`);
+        return false;
+    }
 }
+
 
 module.exports = {
     getPlayerSettings,

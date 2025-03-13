@@ -3,6 +3,8 @@ const { PERMISSIONS, getAllPermissionIds } = require('./permissionRegistry');
 // 默认权限组配置的保存路径
 const DEFAULT_GROUP_CONFIG_PATH = './plugins/area/defaultGroups.json';
 const { loadConfig } = require('./configManager');
+const { getDbSession } = require('./database');
+
 // 加载权限数据
 let permissionData = loadPermissionData();
 
@@ -13,35 +15,68 @@ function getDefaultGroupConfig() {
     return config.defaultGroup || "visitor";
 }
 
-// 加载默认权限组配置
-function loadDefaultGroupConfig() {
-    if (File.exists(DEFAULT_GROUP_CONFIG_PATH)) {
-        let content = File.readFrom(DEFAULT_GROUP_CONFIG_PATH);
-        try {
-            return JSON.parse(content) || {};
-        } catch(e) {
-            return {};
-        }
-    }
-    return {};
-}
+
 
 // 保存默认权限组配置
 function saveDefaultGroupConfig(data) {
-    let jsonStr = JSON.stringify(data, null, 2);
-    let dir = './plugins/area';
-    if (!File.exists(dir)) {
-        File.mkdir(dir);
+    try {
+        const db = getDbSession();
+        
+        // 开始一个事务
+        db.exec("BEGIN TRANSACTION");
+        
+        // 清空旧数据
+        db.exec("DELETE FROM default_groups");
+        
+        const stmt = db.prepare("INSERT INTO default_groups (areaId, groupName) VALUES (?, ?)");
+        
+        // 插入新数据
+        let count = 0;
+        for(const areaId in data) {
+            stmt.bind([areaId, data[areaId]]);
+            stmt.execute();
+            stmt.reset();
+            count++;
+        }
+        
+        // 提交事务
+        db.exec("COMMIT");
+        
+        logger.info(`成功保存${count}条默认权限组配置到数据库`);
+        return true;
+    } catch(e) {
+        // 发生错误时回滚事务
+        try {
+            getDbSession().exec("ROLLBACK");
+        } catch(rollbackErr) {
+            logger.error(`事务回滚失败: ${rollbackErr}`);
+        }
+        
+        logger.error(`保存默认权限组配置失败: ${e}`);
+        return false;
     }
-    return File.writeTo(DEFAULT_GROUP_CONFIG_PATH, jsonStr);
 }
 
 // 为区域设置默认权限组
 function setAreaDefaultGroup(areaId, groupName) {
-    const config = loadDefaultGroupConfig();
-    config[areaId] = groupName;
-    return saveDefaultGroupConfig(config);
+    try {
+        const db = getDbSession();
+        const stmt = db.prepare(`
+            INSERT OR REPLACE INTO default_groups (areaId, groupName)
+            VALUES (?, ?)
+        `);
+        
+        stmt.bind([areaId, groupName]);
+        stmt.execute();
+        
+        logger.info(`成功为区域${areaId}设置默认权限组: ${groupName}`);
+        return true;
+    } catch(e) {
+        logger.error(`设置区域默认权限组失败: ${e}`);
+        return false;
+    }
 }
+
 
 function getSystemDefaultPermissions() {
     const config = loadConfig();
@@ -50,8 +85,23 @@ function getSystemDefaultPermissions() {
 
 // 获取区域的默认权限组
 function getAreaDefaultGroup(areaId) {
-    const config = loadDefaultGroupConfig();
-    return config[areaId] || null; // 如果没有设置,返回null
+    try {
+        const db = getDbSession();
+        const stmt = db.prepare("SELECT groupName FROM default_groups WHERE areaId = ?");
+        
+        stmt.bind(areaId);
+        stmt.execute();
+        
+        if(stmt.step()) {
+            const row = stmt.fetch();
+            return row.groupName;
+        }
+        
+        return null; // 没有找到默认组
+    } catch(e) {
+        logger.error(`获取区域默认权限组失败: ${e}`);
+        return null;
+    }
 }
 
 // 定义默认的权限组

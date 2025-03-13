@@ -1,6 +1,6 @@
 // mainForm.js
 const { loadAreaData, saveAreaData } = require('./config');
-const { getAreaData } = require('./czland');
+const { getAreaData } = require('./czareaprotection');
 const { isInArea } = require('./utils');
 const getOfflinePlayerData = ll.import("PlayerData", "getOfflinePlayerData");
 const { getPlayerCustomGroups, createCustomGroup, editCustomGroup, deleteCustomGroup } = require('./customGroups');
@@ -560,7 +560,7 @@ function confirmDeleteArea(player, areaId) {
             delete areaData[areaId];
             if (saveAreaData(areaData)) {
                 player.tell("§a区域已成功删除！");
-                const { updateAreaData } = require('./czland');
+                const { updateAreaData } = require('./czareaprotection');
                 updateAreaData(areaData);
                 
                 // 如果是子区域，返回到父区域操作界面

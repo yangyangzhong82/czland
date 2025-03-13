@@ -4,7 +4,7 @@ const {  saveAreaData } = require('./config');
 const { isInArea, checkNewAreaOverlap, isAreaWithinArea } = require('./utils');
 const { getPlayerData } = require('./playerDataManager');
 const { checkPermission } = require('./permission');
-const { getAreaData } = require('./czland');
+const { getAreaData } = require('./czareaprotection');
 function showSubAreaManageForm(player, areaId) {
     const areaData = getAreaData();
     const area = areaData[areaId];

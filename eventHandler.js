@@ -1,6 +1,6 @@
 
 const { isInArea ,getPriorityAreasAtPosition } = require('./utils');
-const { getAreaData } = require('./czland');
+const { getAreaData } = require('./czareaprotection');
 const { checkPermission } = require('./permission');
 const { PERMISSIONS } = require('./permissionRegistry');
 const { loadConfig } = require('./configManager');
