@@ -1143,7 +1143,8 @@ function showAreaRulesForm(player, areaId) {
             allowBreezeWindChargeExplosion: false,
             allowOtherExplosion: false,
             allowBlockExplosion: false,
-            allowFireSpread: false
+            allowFireSpread: false,
+            allowFireBurnBlock: false
         };
     }
     
@@ -1162,7 +1163,8 @@ function showAreaRulesForm(player, areaId) {
     fm.addSwitch("允许其他类型爆炸", area.rules.allowOtherExplosion);
     fm.addSwitch("允许方块爆炸", area.rules.allowBlockExplosion);
     fm.addSwitch("允许火焰蔓延", area.rules.allowFireSpread);
-    
+    fm.addSwitch("允许火焰烧毁方块", area.rules.allowFireBurnBlock);
+
     player.sendForm(fm, (player, data) => {
         if(data === null) {
             showAreaOperateForm(player, areaId);
@@ -1181,9 +1183,13 @@ function showAreaRulesForm(player, areaId) {
         area.rules.allowOtherExplosion = data[8];
         area.rules.allowBlockExplosion = data[9];
         area.rules.allowFireSpread = data[10];
-        
+        area.rules.allowFireBurnBlock = data[11];  
         if(saveAreaData(areaData)) {
             player.tell("§a区域规则设置已保存！");
+            
+            // 关键修复：更新内存中的区域数据
+            const { updateAreaData } = require('./czareaprotection');
+            updateAreaData(areaData);
         } else {
             player.tell("§c保存区域规则失败！");
         }

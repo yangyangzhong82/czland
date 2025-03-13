@@ -1,10 +1,10 @@
 {
-    "entry": "czland.js",
-    "name": "czland",
+    "entry": "czareaprotection.js",
+    "name": "czareaprotection",
     "type": "lse-nodejs",
-    "version":"1.0.0",
-    "description": "nbt工具",
-    "author": "bluebox",
+    "version":"1.1.0",
+    "description": "czareaprotection",
+    "author": "yangyangzhong82",
     "dependencies": [
         {
             "name": "legacy-script-engine-nodejs"

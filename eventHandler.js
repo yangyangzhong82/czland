@@ -212,7 +212,7 @@ mc.listen("onTakeItem", function(player, item) {
     return true;
 });
 
-
+//*
 // 然后监听丢弃物品事件
 iListenAttentively.emplaceListener(
     "ila::mc::world::actor::player::PlayerDropItemAfterEvent",
@@ -357,6 +357,47 @@ mc.listen("onFireSpread", function(pos) {
     }
     return true;
 });
+
+iListenAttentively.emplaceListener(
+    "ila::mc::world::FireTryBurnBlockBeforeEvent",
+    event => {
+        // 获取火焰尝试燃烧的方块位置
+        let dim = event["dimid"]  // 字符串三个维度分别是Overworld Nether TheEnd
+        let x = event["pos"][0]
+        let y = event["pos"][1]
+        let z = event["pos"][2]
+        
+        // 创建位置对象
+        const pos = {
+            x: x,
+            y: y,
+            z: z,
+            dimid: dim === "Overworld" ? 0 : (dim === "Nether" ? 1 : 2)  // 转换维度ID
+        };
+        
+        logger.info(`检测到火焰尝试燃烧方块 at (${x}, ${y}, ${z}) 维度: ${dim}`);
+        
+        // 获取区域数据
+        const areaData = getAreaData();
+        
+        // 检查是否在保护区域内
+        for(let areaId in areaData) {
+            const area = areaData[areaId];
+            if(isInArea(pos, area)) {
+                // 检查区域是否允许火焰烧毁方块
+                if(!area.rules || !area.rules.allowFireBurnBlock) {
+                    logger.info(`区域 ${areaId} (${area.name}) 不允许火焰烧毁方块，已拦截`);
+                    event["cancelled"] = true;  // 拦截燃烧
+                    return;
+                }
+            }
+        }
+        
+        // 不在任何区域内或所有区域允许，不拦截
+        logger.info("允许火焰烧毁方块");
+    },
+    iListenAttentively.EventPriority.High
+);
 function log(message) {
     logger.info(`[区域系统] ${message}`);
 }

@@ -14,7 +14,6 @@ function calculateAreaPrice(point1, point2) {
     
     let price;
     if(config.priceFormula.useCustom) {
-        // 使用自定义公式
         try {
             const formula = config.priceFormula.formula
                 .replace('length', length)
@@ -47,7 +46,7 @@ function calculateAreaPrice(point1, point2) {
 // 处理区域购买
 function handleAreaPurchase(player, point1, point2, callback) {
     const price = calculateAreaPrice(point1, point2);
-    const playerMoney = money.get(player.xuid); // 获取玩家余额 [[1]](https://poe.com/citation?message_id=357048736130&citation=1)
+    const playerMoney = money.get(player.xuid); // 获取玩家余额 
     
     if(playerMoney < price) {
         player.tell(`§c你的余额不足！需要 ${price} 金币，当前余额 ${playerMoney} 金币`);
@@ -55,7 +54,7 @@ function handleAreaPurchase(player, point1, point2, callback) {
     }
     
     // 扣除金币
-    if(money.reduce(player.xuid, price)) { // 扣除玩家金币 [[1]](https://poe.com/citation?message_id=357048736130&citation=1)
+    if(money.reduce(player.xuid, price)) { // 扣除玩家金币 
         player.tell(`§a成功支付 ${price} 金币`);
         if(callback) callback();
         return true;
@@ -73,7 +72,7 @@ function handleAreaRefund(player, point1, point2) {
     const originalPrice = calculateAreaPrice(point1, point2);
     const refundAmount = Math.floor(originalPrice * config.refundRate);
     
-    if(money.add(player.xuid, refundAmount)) { // 给玩家退款 [[1]](https://poe.com/citation?message_id=357048736130&citation=1)
+    if(money.add(player.xuid, refundAmount)) { // 给玩家退款 
         player.tell(`§a已退还 ${refundAmount} 金币（${config.refundRate * 100}%)`);
     } else {
         player.tell("§c退款失败，请联系管理员");
