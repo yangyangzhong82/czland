@@ -87,13 +87,13 @@ function handleCurrentArea(player) {
     });
 }
 
-// 其余函数保持不变
 function showAreaListForm(player, currentPage = 0, filter = "") {
     // 收集玩家拥有的区域
     const areaData = getAreaData();
     let allAreas = [];
     for (let id in areaData) {
-        if (hasPermission(player, id, "manage")) {
+        // 使用正确的checkPermission调用
+        if (checkPermission(player, areaData, id, "manage")) {
             let area = areaData[id];
             area.id = id;
             allAreas.push(area);
@@ -104,7 +104,8 @@ function showAreaListForm(player, currentPage = 0, filter = "") {
     let filteredAreas = allAreas;
     if (filter.trim() !== "") {
         filteredAreas = allAreas.filter(area => 
-            (area.name || "").toLowerCase().includes(filter.toLowerCase()));
+            (area.name || "").toLowerCase().includes(filter.toLowerCase()) ||
+            (area.id || "").toLowerCase().includes(filter.toLowerCase()));
     }
     
     // 分页设置
@@ -121,7 +122,7 @@ function showAreaListForm(player, currentPage = 0, filter = "") {
     fm.setTitle("区域列表");
     
     // 搜索框
-    fm.addInput("搜索区域", "输入区域名称", filter);
+    fm.addInput("搜索区域", "输入区域名称或ID", filter);
     
     // 区域列表
     for (let area of pageAreas) {
@@ -174,7 +175,6 @@ function showAreaListForm(player, currentPage = 0, filter = "") {
         player.tell("§e请选择一个区域并点击完成选择。");
     });
 }
-
 function hasPermission(player, areaId, permission) {
     const areaData = getAreaData();
     return checkPermission(player, areaData, areaId, permission);
@@ -603,7 +603,8 @@ function showTransferAreaForm(player, areaId, currentPage = 0, filter = "") {
     filteredPlayers.forEach(p => {
         player.setExtraData(`transfer_${p.uuid}`, {
             name: p.name,
-            uuid: p.uuid
+            uuid: p.uuid,
+            xuid: p.xuid
         }); 
     });
 
@@ -717,7 +718,8 @@ function confirmTransferArea(player, areaId, newOwner) {
         // 保存区域数据
         if (saveAreaData(areaData)) {
             player.tell("§a区域已成功转让！");
-            
+            const { updateAreaData } = require('./czareaprotection');
+            updateAreaData(areaData);
             // 尝试通知在线的新主人
             const newOwnerPlayer = mc.getPlayer(transferData.uuid);
             if (newOwnerPlayer) {

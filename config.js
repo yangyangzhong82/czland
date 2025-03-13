@@ -2,9 +2,6 @@
 const { getDbSession } = require('./database');
 
 // 读取区域数据
-// 读取区域数据
-// 读取区域数据
-// 读取区域数据
 function loadAreaData() {
     try {
         const db = getDbSession();

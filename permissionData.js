@@ -35,6 +35,7 @@ function loadPermissionData() {
 }
 
 // 保存权限组数据
+// 保存权限组数据
 function savePermissionData(data) {
     try {
         const db = getDbSession();
@@ -45,6 +46,7 @@ function savePermissionData(data) {
         // 清空旧数据
         db.exec("DELETE FROM permissions");
         
+        // 使用问号占位符
         const stmt = db.prepare("INSERT INTO permissions (playerUuid, areaId, groupName) VALUES (?, ?, ?)");
         
         // 插入新数据
@@ -53,9 +55,20 @@ function savePermissionData(data) {
             for(const areaId in data[playerUuid]) {
                 const groupName = data[playerUuid][areaId];
                 
+                // 添加参数验证
+                if (!playerUuid || !areaId || !groupName) {
+                    logger.warn(`跳过无效权限数据: playerUuid=${playerUuid}, areaId=${areaId}, groupName=${groupName}`);
+                    continue;
+                }
+                
+                // 清除先前的绑定，然后再绑定新参数
+                stmt.reset();  // 先重置语句状态
+                stmt.clear();  // 清除先前的绑定参数
+                
+                // 一次性绑定所有参数
                 stmt.bind([playerUuid, areaId, groupName]);
-                stmt.execute();
-                stmt.reset();
+                stmt.execute();  // 执行语句
+                
                 count++;
             }
         }

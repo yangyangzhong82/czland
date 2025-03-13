@@ -99,16 +99,6 @@ function checkPlayerArea(pl) {
         }
     } else {
         // 离开所有区域
-        if(previousAreaId !== null) {
-            playerCurrentAreas[pl.uuid] = null;
-            
-            // 在离开时检查冷却时间是否已过
-            if(settings.displayTitle && (now - pl._lastAreaDisplay >= settings.displayCooldown)) {
-                pl.setTitle("§e你已离开保护区域", 2, 10, 40, 10);
-                pl.setTitle("", 3, 10, 40, 10);
-                pl._lastAreaDisplay = now; // 更新显示时间
-            }
-        }
         
         // 清除ActionBar
         if(settings.displayActionBar) {
