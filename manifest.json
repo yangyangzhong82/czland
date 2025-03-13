@@ -1,0 +1,16 @@
+{
+    "entry": "czland.js",
+    "name": "czland",
+    "type": "lse-nodejs",
+    "version":"1.0.0",
+    "description": "nbt工具",
+    "author": "bluebox",
+    "dependencies": [
+        {
+            "name": "legacy-script-engine-nodejs"
+        },
+        {
+            "name": "iListenAttentively-LseExport"
+        }
+    ]
+}
