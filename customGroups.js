@@ -3,7 +3,7 @@
 const CUSTOM_GROUPS_PATH = './plugins/area/customGroups.json';
 const { DEFAULT_GROUPS } = require('./permission');
 const { getDbSession } = require('./database');
-
+const {logDebug, logInfo, logWarning, logError } = require('./logger');
 // 加载自定义权限组数据
 function loadCustomGroups() {
     try {
@@ -82,7 +82,7 @@ function saveCustomGroups(data) {
         // 提交事务
         db.exec("COMMIT");
         
-        logger.info(`成功保存${count}个自定义权限组到数据库`);
+        logDebug(`成功保存${count}个自定义权限组到数据库`);
         return true;
     } catch(e) {
         // 发生错误时回滚事务
@@ -140,7 +140,7 @@ function createCustomGroup(uuid, groupName, displayName, permissions, inheritFro
         ]);
         
         stmt.execute();
-        logger.info(`成功创建权限组: ${groupName}`);
+        logDebug(`成功创建权限组: ${groupName}`);
         return true;
     } catch(e) {
         logger.error(`创建自定义权限组失败: ${e}`);
@@ -185,7 +185,7 @@ function editCustomGroup(uuid, groupName, displayName, permissions, inheritFrom 
         const rowsAffected = db.exec("SELECT changes()")[0][0];
         
         if (rowsAffected > 0) {
-            logger.info(`成功编辑权限组: ${groupName}`);
+            logDebug(`成功编辑权限组: ${groupName}`);
             return true;
         } else {
             logger.warn(`权限组 ${groupName} 数据未变更或更新失败`);

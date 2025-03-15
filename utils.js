@@ -1,5 +1,6 @@
 // utils.js
-// 检查玩家是否在某个区域内
+const {logDebug, logInfo, logWarning, logError } = require('./logger');
+// // 检查玩家是否在某个区域内
 function isInArea(pos, area) {
     // 维度必须相同
     if(pos.dimid !== area.dimid) return false;
@@ -185,6 +186,18 @@ function checkAreaSizeLimits(point1, point2, config, isSubarea = false) {
     return { valid: true };
 }
 
+// 计算玩家拥有的区域数量
+function countPlayerAreas(playerXuid, areaData) {
+    let count = 0;
+    for (const areaId in areaData) {
+        // 只统计主区域，不计算子区域
+        if (areaData[areaId].xuid === playerXuid && !areaData[areaId].isSubarea) {
+            count++;
+        }
+    }
+    return count;
+}
+
 module.exports = {
     isInArea,
     checkAreasOverlap,
@@ -192,5 +205,6 @@ module.exports = {
     isAreaWithinArea,
     getPriorityAreasAtPosition, // 导出新函数
     getHighestPriorityArea,
-    checkAreaSizeLimits
+    checkAreaSizeLimits,
+    countPlayerAreas
 };

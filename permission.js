@@ -4,6 +4,7 @@ const { PERMISSIONS, getAllPermissionIds } = require('./permissionRegistry');
 const DEFAULT_GROUP_CONFIG_PATH = './plugins/area/defaultGroups.json';
 const { loadConfig } = require('./configManager');
 const { getDbSession } = require('./database');
+const {logDebug, logInfo, logWarning, logError } = require('./logger');
 
 // 加载权限数据
 let permissionData = loadPermissionData();
@@ -42,7 +43,7 @@ function saveDefaultGroupConfig(data) {
         // 提交事务
         db.exec("COMMIT");
         
-        logger.info(`成功保存${count}条默认权限组配置到数据库`);
+        logDebug(`成功保存${count}条默认权限组配置到数据库`);
         return true;
     } catch(e) {
         // 发生错误时回滚事务
@@ -69,7 +70,7 @@ function setAreaDefaultGroup(areaId, groupName) {
         stmt.bind([areaId, groupName]);
         stmt.execute();
         
-        logger.info(`成功为区域${areaId}设置默认权限组: ${groupName}`);
+        logDebug(`成功为区域${areaId}设置默认权限组: ${groupName}`);
         return true;
     } catch(e) {
         logger.error(`设置区域默认权限组失败: ${e}`);
@@ -128,18 +129,25 @@ function checkPermission(player, areaData, areaId, permission) {
     const area = areaData[areaId];
     if(!area) return false;
     
-    logger.info(`开始检查权限 - 玩家: ${player.name}, 区域: ${areaId}, 权限: ${permission}`);
+    logDebug(`开始检查权限 - 玩家: ${player.name}, 区域: ${areaId}, 权限: ${permission}`);
+    
+    // 检查玩家是否是领地管理员
+    const { isAreaAdmin } = require('./areaAdmin');
+    if (isAreaAdmin(player.uuid)) {
+        logDebug(`玩家 ${player.name} 是领地管理员，授予所有权限`);
+        return true;
+    }
     
     // 如果是区域创建者,赋予所有权限
     if(area.xuid === player.xuid) {
-        logger.info(`玩家 ${player.name} 是区域创建者，授予所有权限`);
+        logDebug(`玩家 ${player.name} 是区域创建者，授予所有权限`);
         return true;
     }
 
     if(area.isSubarea && area.parentAreaId) {
         const parentArea = areaData[area.parentAreaId];
         if(parentArea && parentArea.xuid === player.xuid) {
-            logger.info(`玩家 ${player.name} 是父区域 ${area.parentAreaId} 的创建者，授予子区域所有权限`);
+            logDebug(`玩家 ${player.name} 是父区域 ${area.parentAreaId} 的创建者，授予子区域所有权限`);
             return true;
         }
     }
@@ -157,7 +165,7 @@ function checkPermission(player, areaData, areaId, permission) {
             for (let uuid in customGroups) {
                 if (customGroups[uuid][playerCurrentAreaGroup]) {
                     const hasPermission = hasPermissionInCustomGroup(customGroups, uuid, playerCurrentAreaGroup, permission);
-                    logger.info(`子区域特定权限检查结果: ${hasPermission ? "允许" : "拒绝"}`);
+                    logDebug(`子区域特定权限检查结果: ${hasPermission ? "允许" : "拒绝"}`);
                     // 如果子区域明确定义了权限（无论允许还是拒绝），都以它为准
                     return hasPermission;
                 }
@@ -171,7 +179,7 @@ function checkPermission(player, areaData, areaId, permission) {
             for (let uuid in customGroups) {
                 if (customGroups[uuid][areaDefaultGroup]) {
                     const hasPermission = hasPermissionInCustomGroup(customGroups, uuid, areaDefaultGroup, permission);
-                    logger.info(`子区域默认权限组检查结果: ${hasPermission ? "允许" : "拒绝"}`);
+                    logDebug(`子区域默认权限组检查结果: ${hasPermission ? "允许" : "拒绝"}`);
                     // 如果子区域明确定义了默认权限，以它为准
                     return hasPermission;
                 }
@@ -187,20 +195,20 @@ function checkPermission(player, areaData, areaId, permission) {
     
     // 检查是否为子区域
     const isSubarea = area.isSubarea && area.parentAreaId;
-    logger.info(`区域 ${areaId} ${isSubarea ? '是子区域，父区域为: ' + area.parentAreaId : '不是子区域'}`);
+    logDebug(`区域 ${areaId} ${isSubarea ? '是子区域，父区域为: ' + area.parentAreaId : '不是子区域'}`);
     
     // 权限检查优先级：子区域特定玩家权限 > 主区域特定玩家权限 > 子区域默认权限 > 主区域默认权限 > 系统默认权限
     
     // 1. 检查当前区域特定玩家权限
     const playerCurrentAreaGroup = playerPerms[areaId];
     if (playerCurrentAreaGroup) {
-        logger.info(`玩家 ${player.name} 在当前区域 ${areaId} 有指定权限组: ${playerCurrentAreaGroup}`);
+        logDebug(`玩家 ${player.name} 在当前区域 ${areaId} 有指定权限组: ${playerCurrentAreaGroup}`);
         
         // 检查该权限组是否存在
         for (let uuid in customGroups) {
             if (customGroups[uuid][playerCurrentAreaGroup]) {
                 const hasPermission = hasPermissionInCustomGroup(customGroups, uuid, playerCurrentAreaGroup, permission);
-                logger.info(`权限检查结果(当前区域特定组): ${hasPermission ? "允许" : "拒绝"}`);
+                logDebug(`权限检查结果(当前区域特定组): ${hasPermission ? "允许" : "拒绝"}`);
                 return hasPermission; // 立即返回结果
             }
         }
@@ -210,13 +218,13 @@ function checkPermission(player, areaData, areaId, permission) {
     if (isSubarea) {
         const playerParentAreaGroup = playerPerms[area.parentAreaId];
         if (playerParentAreaGroup) {
-            logger.info(`玩家 ${player.name} 在父区域 ${area.parentAreaId} 有指定权限组: ${playerParentAreaGroup}`);
+            logDebug(`玩家 ${player.name} 在父区域 ${area.parentAreaId} 有指定权限组: ${playerParentAreaGroup}`);
             
             // 检查该权限组是否存在
             for (let uuid in customGroups) {
                 if (customGroups[uuid][playerParentAreaGroup]) {
                     const hasPermission = hasPermissionInCustomGroup(customGroups, uuid, playerParentAreaGroup, permission);
-                    logger.info(`权限检查结果(父区域特定组): ${hasPermission ? "允许" : "拒绝"}`);
+                    logDebug(`权限检查结果(父区域特定组): ${hasPermission ? "允许" : "拒绝"}`);
                     return hasPermission; // 立即返回结果
                 }
             }
@@ -226,13 +234,13 @@ function checkPermission(player, areaData, areaId, permission) {
     // 3. 检查当前区域默认权限组
     const areaDefaultGroup = getAreaDefaultGroup(areaId);
     if (areaDefaultGroup) {
-        logger.info(`区域 ${areaId} 使用默认权限组: ${areaDefaultGroup}`);
+        logDebug(`区域 ${areaId} 使用默认权限组: ${areaDefaultGroup}`);
         
         // 检查该默认权限组是否存在
         for (let uuid in customGroups) {
             if (customGroups[uuid][areaDefaultGroup]) {
                 const hasPermission = hasPermissionInCustomGroup(customGroups, uuid, areaDefaultGroup, permission);
-                logger.info(`权限检查结果(当前区域默认组): ${hasPermission ? "允许" : "拒绝"}`);
+                logDebug(`权限检查结果(当前区域默认组): ${hasPermission ? "允许" : "拒绝"}`);
                 return hasPermission; // 立即返回结果
             }
         }
@@ -242,13 +250,13 @@ function checkPermission(player, areaData, areaId, permission) {
     if (isSubarea) {
         const parentAreaDefaultGroup = getAreaDefaultGroup(area.parentAreaId);
         if (parentAreaDefaultGroup) {
-            logger.info(`父区域 ${area.parentAreaId} 使用默认权限组: ${parentAreaDefaultGroup}`);
+            logDebug(`父区域 ${area.parentAreaId} 使用默认权限组: ${parentAreaDefaultGroup}`);
             
             // 检查该默认权限组是否存在
             for (let uuid in customGroups) {
                 if (customGroups[uuid][parentAreaDefaultGroup]) {
                     const hasPermission = hasPermissionInCustomGroup(customGroups, uuid, parentAreaDefaultGroup, permission);
-                    logger.info(`权限检查结果(父区域默认组): ${hasPermission ? "允许" : "拒绝"}`);
+                    logDebug(`权限检查结果(父区域默认组): ${hasPermission ? "允许" : "拒绝"}`);
                     return hasPermission; // 立即返回结果
                 }
             }
@@ -256,10 +264,10 @@ function checkPermission(player, areaData, areaId, permission) {
     }
     
     // 5. 最后使用系统默认权限（最低优先级）
-    logger.info(`玩家 ${player.name} 在区域 ${areaId} 使用系统默认权限, 检查权限: ${permission}`);
+    logDebug(`玩家 ${player.name} 在区域 ${areaId} 使用系统默认权限, 检查权限: ${permission}`);
     const defaultPermissions = getSystemDefaultPermissions();
     const hasDefaultPermission = defaultPermissions.includes(permission);
-    logger.info(`权限检查结果(系统默认): ${hasDefaultPermission ? "允许" : "拒绝"}`);
+    logDebug(`权限检查结果(系统默认): ${hasDefaultPermission ? "允许" : "拒绝"}`);
     
     return hasDefaultPermission;
 }

@@ -11,6 +11,7 @@ const { calculateAreaPrice, handleAreaPurchase, handleAreaRefund } = require('./
 /// <reference path="d:\mc\插件/dts/HelperLib-master/src/index.d.ts"/> 
 const { loadConfig } = require('./configManager');
 const { showSubAreaManageForm } = require('./subareaForms');
+const {logDebug, logInfo, logWarning, logError } = require('./logger');
 
 
 function showMainForm(player) {
@@ -87,7 +88,7 @@ function handleCurrentArea(player) {
     });
 }
 
-function showAreaListForm(player, currentPage = 0, filter = "") {
+function showAreaListForm(player, currentPage = 0, filter = "", dimFilters = [], ownerFilters = []) {
     // 收集玩家拥有的区域
     const areaData = getAreaData();
     let allAreas = [];
@@ -100,12 +101,30 @@ function showAreaListForm(player, currentPage = 0, filter = "") {
         }
     }
     
+    // 获取所有玩家数据用于显示名称
+    const allPlayers = getOfflinePlayerData() || [];
+    const playerMap = {};
+    allPlayers.forEach(p => playerMap[p.uuid] = p.name);
+    
     // 根据搜索关键词过滤区域
     let filteredAreas = allAreas;
     if (filter.trim() !== "") {
-        filteredAreas = allAreas.filter(area => 
+        filteredAreas = filteredAreas.filter(area => 
             (area.name || "").toLowerCase().includes(filter.toLowerCase()) ||
             (area.id || "").toLowerCase().includes(filter.toLowerCase()));
+    }
+    
+    // 根据维度过滤
+    if (dimFilters.length > 0) {
+        filteredAreas = filteredAreas.filter(area => dimFilters.includes(area.dimid));
+    }
+    
+    // 根据区域主人过滤
+    if (ownerFilters.length > 0) {
+        filteredAreas = filteredAreas.filter(area => {
+            const ownerName = playerMap[area.uuid] || area.playerName || "";
+            return ownerFilters.some(owner => ownerName.toLowerCase().includes(owner.toLowerCase()));
+        });
     }
     
     // 分页设置
@@ -124,10 +143,43 @@ function showAreaListForm(player, currentPage = 0, filter = "") {
     // 搜索框
     fm.addInput("搜索区域", "输入区域名称或ID", filter);
     
+    // 维度筛选 - 使用多个开关
+    fm.addLabel("维度筛选:");
+    fm.addSwitch("主世界(0)", dimFilters.includes(0));
+    fm.addSwitch("下界(-1)", dimFilters.includes(-1));
+    fm.addSwitch("末地(1)", dimFilters.includes(1));
+    
+    // 区域主人搜索 - 允许多个
+    fm.addInput("搜索区域主人", "输入主人名称，多个用逗号分隔", ownerFilters.join(", "));
+    
     // 区域列表
     for (let area of pageAreas) {
+        // 获取区域主人名称
+        const ownerName = playerMap[area.uuid] || area.playerName || "未知";
+        
+        // 获取维度名称
+        let dimName;
+        switch(area.dimid) {
+            case 0: dimName = "主世界"; break;
+            case -1: dimName = "下界"; break;
+            case 1: dimName = "末地"; break;
+            default: dimName = `维度${area.dimid}`; // 维度ID的取值：0代表主世界，1代表下界，2代表末地 [[6]](https://poe.com/citation?message_id=362257128348&citation=6)
+        }
+        
+        // 计算区域大小
+        const width = Math.abs(area.point2.x - area.point1.x) + 1;
+        const height = Math.abs(area.point2.y - area.point1.y) + 1;
+        const length = Math.abs(area.point2.z - area.point1.z) + 1;
+        const size = width * height * length;
+        
+        // 子区域信息
+        let subareaInfo = "";
+        if (area.subareas && Object.keys(area.subareas).length > 0) {
+            subareaInfo = `§7(含${Object.keys(area.subareas).length}个子区域)`;
+        }
+        
         fm.addSwitch(
-            `${area.name} (ID: ${area.id})`,
+            `§b${area.name} §r(ID: §7${area.id}§r)\n§7主人: §f${ownerName} §7| 维度: §f${dimName}\n§7大小: §f${width}×${height}×${length} §7(${size}方块)${subareaInfo}`,
             false
         );
     }
@@ -141,20 +193,32 @@ function showAreaListForm(player, currentPage = 0, filter = "") {
     
     // 发送表单
     player.sendForm(fm, (player, data) => {
-        if (data === null) return;
+        if (data === null) return; // 玩家取消表单返回null [[6]](https://poe.com/citation?message_id=362257128348&citation=6)
         
         const keyword = data[0].trim();
+        
+        // 收集维度筛选
+        const newDimFilters = [];
+        if (data[2]) newDimFilters.push(0);  // 主世界
+        if (data[3]) newDimFilters.push(-1); // 下界
+        if (data[4]) newDimFilters.push(1);  // 末地
+        
+        // 处理多个区域主人筛选
+        const ownerInput = data[5].trim();
+        const newOwnerFilters = ownerInput ? ownerInput.split(",").map(o => o.trim()).filter(o => o) : [];
+        
         const selectedAreas = [];
+        const startIdx = 6; // 区域列表开始的索引
         
         // 收集选中的区域
         for (let i = 0; i < pageAreas.length; i++) {
-            if (data[i + 1] === true) {
+            if (data[i + startIdx] === true) {
                 selectedAreas.push(pageAreas[i].id);
             }
         }
         
-        const completeSwitch = data[pageAreas.length + 1];
-        const newPage = data[pageAreas.length + 2];
+        const completeSwitch = data[startIdx + pageAreas.length];
+        const newPage = data[startIdx + pageAreas.length + 1];
         
         // 处理表单结果
         if (completeSwitch && selectedAreas.length === 1) {
@@ -162,17 +226,26 @@ function showAreaListForm(player, currentPage = 0, filter = "") {
             return;
         }
         
-        if (keyword !== filter) {
-            showAreaListForm(player, 0, keyword);
+        // 如果筛选条件改变，重新加载列表
+        const dimFiltersChanged = JSON.stringify(dimFilters) !== JSON.stringify(newDimFilters);
+        const ownerFiltersChanged = JSON.stringify(ownerFilters) !== JSON.stringify(newOwnerFilters);
+        
+        if (keyword !== filter || dimFiltersChanged || ownerFiltersChanged) {
+            showAreaListForm(player, 0, keyword, newDimFilters, newOwnerFilters);
             return;
         }
         
+        // 如果页码改变，重新加载列表
         if (newPage !== currentPage) {
-            showAreaListForm(player, newPage, filter);
+            showAreaListForm(player, newPage, filter, dimFilters, ownerFilters);
             return;
         }
         
-        player.tell("§e请选择一个区域并点击完成选择。");
+        if (selectedAreas.length !== 1) {
+            player.tell("§e请选择一个区域并点击完成选择。");
+            showAreaListForm(player, currentPage, filter, dimFilters, ownerFilters);
+            return;
+        }
     });
 }
 function hasPermission(player, areaId, permission) {
@@ -344,12 +417,14 @@ function confirmResizeArea(player, areaId) {
         // 计算价格差异
         priceDifference = newPrice - originalPrice;
         
+        const currencyName = config.economy.type === "scoreboard" ? "点" : "金币";
+        
         if(priceDifference > 0) {
             // 新区域更大，需要额外付费
-            priceText = `§e新区域比原区域更大，需要额外支付 ${priceDifference} 金币`;
+            priceText = `§e新区域比原区域更大，需要额外支付 ${priceDifference} ${currencyName}`;
         } else if(priceDifference < 0) {
             // 新区域更小，可以获得退款
-            priceText = `§e新区域比原区域更小，你将获得 ${Math.abs(priceDifference)} 金币退款`;
+            priceText = `§e新区域比原区域更小，你将获得 ${Math.abs(priceDifference)} ${currencyName}退款`;
         } else {
             priceText = "§e区域价格没有变化";
         }
@@ -382,19 +457,22 @@ function confirmResizeArea(player, areaId) {
         // 检查经济系统
         if(config.economy && config.economy.enabled && priceDifference > 0) {
             // 如果新区域更大，需要额外付费
-            const playerMoney = money.get(player.xuid);
-            if(playerMoney < priceDifference) {
-                player.tell(`§c你的余额不足！需要额外支付 ${priceDifference} 金币，当前余额 ${playerMoney} 金币`);
+            const { getPlayerBalance, reducePlayerBalance } = require('./economy');
+            const playerBalance = getPlayerBalance(player, config.economy);
+            const currencyName = config.economy.type === "scoreboard" ? "点" : "金币";
+            
+            if(playerBalance < priceDifference) {
+                player.tell(`§c你的余额不足！需要额外支付 ${priceDifference} ${currencyName}，当前余额 ${playerBalance} ${currencyName}`);
                 return;
             }
             
             // 扣除额外费用
-            if(!money.reduce(player.xuid, priceDifference)) {
+            if(!reducePlayerBalance(player, priceDifference, config.economy)) {
                 player.tell("§c扣款失败，请联系管理员");
                 return;
             }
             
-            player.tell(`§a成功支付额外费用 ${priceDifference} 金币`);
+            player.tell(`§a成功支付额外费用 ${priceDifference} ${currencyName}`);
         }
         
         // 重新获取区域数据以确保使用最新数据
@@ -420,8 +498,11 @@ function confirmResizeArea(player, areaId) {
             
             // 如果新区域更小，提供退款
             if(priceDifference < 0) {
-                if(money.add(player.xuid, Math.abs(priceDifference))) {
-                    player.tell(`§a已退还 ${Math.abs(priceDifference)} 金币`);
+                const { addPlayerBalance } = require('./economy');
+                const currencyName = config.economy.type === "scoreboard" ? "点" : "金币";
+                
+                if(addPlayerBalance(player, Math.abs(priceDifference), config.economy)) {
+                    player.tell(`§a已退还 ${Math.abs(priceDifference)} ${currencyName}`);
                 } else {
                     player.tell("§c退款失败，请联系管理员");
                 }
@@ -498,14 +579,20 @@ function showAreaInfo(player, areaId) {
 function confirmDeleteArea(player, areaId) {
     const areaData = getAreaData();
     const area = areaData[areaId];
+    const config = loadConfig().economy;
     
     const fm = mc.newCustomForm();
     fm.setTitle(`确认删除 ${area.name}`);
     
-    // 计算退款金额
-    const refundText = area.price 
-        ? `§e你将获得 ${Math.floor(area.price * loadConfig().economy.refundRate)} 金币退款（${loadConfig().economy.refundRate * 100}%）`
-        : "§e删除此区域不会获得退款";
+    // 计算退款金额并根据经济类型调整显示
+    let refundText = "";
+    if (config.enabled && area.price) {
+        const refundAmount = Math.floor(area.price * config.refundRate);
+        const currencyName = config.type === "scoreboard" ? "点" : "金币";
+        refundText = `§e你将获得 ${refundAmount} ${currencyName}退款（${config.refundRate * 100}%）`;
+    } else {
+        refundText = "§e删除此区域不会获得退款";
+    }
     
     fm.addLabel("§c警告：此操作不可撤销！");
     fm.addLabel(refundText);
@@ -587,7 +674,7 @@ function showTransferAreaForm(player, areaId, currentPage = 0, filter = "") {
     }
     
     // 使用离线玩家数据API获取所有玩家数据
-    const allPlayers = getOfflinePlayerData(); // 这里使用离线玩家数据API
+    const allPlayers = getOfflinePlayerData(); 
     
     // 根据搜索关键词过滤玩家
     let filteredPlayers = allPlayers;
@@ -951,12 +1038,12 @@ function showCreateGroupForm(player) {
         const permissions = [];
         permissionFormIndexes.forEach((permId, index) => {
             if(data[index] === true) {
-                logger.info(`选中权限: ${permId}`);
+                logDebug(`选中权限: ${permId}`);
                 permissions.push(permId);
             }
         });
         
-        logger.info(`创建权限组: ${groupId}, 权限: ${JSON.stringify(permissions)}`);
+        logDebug(`创建权限组: ${groupId}, 权限: ${JSON.stringify(permissions)}`);
         
         // 创建自定义权限组 
         if(createCustomGroup(player.uuid, groupId, displayName, permissions, null)) {
@@ -965,7 +1052,7 @@ function showCreateGroupForm(player) {
             // 验证保存结果
             const groups = getPlayerCustomGroups(player.uuid);
             if(groups[groupId]) {
-                logger.info(`已保存权限组: ${JSON.stringify(groups[groupId])}`);
+                logDebug(`已保存权限组: ${JSON.stringify(groups[groupId])}`);
             }
         } else {
             player.tell("§c权限组创建失败！");
@@ -1086,12 +1173,12 @@ function showGroupEditForm(player, groupId) {
         const permissions = [];
         permissionFormIndexes.forEach((permId, index) => {
             if(data[index] === true) {
-                logger.info(`选中权限: ${permId}`);
+                logDebug(`选中权限: ${permId}`);
                 permissions.push(permId);
             }
         });
         
-        logger.info(`编辑权限组: ${groupId}, 新权限: ${JSON.stringify(permissions)}`);
+        logDebug(`编辑权限组: ${groupId}, 新权限: ${JSON.stringify(permissions)}`);
         
         // 保存修改
         if(editCustomGroup(player.uuid, groupId, newName, permissions, null)) {
@@ -1100,7 +1187,7 @@ function showGroupEditForm(player, groupId) {
             // 验证保存结果
             const updatedGroups = getPlayerCustomGroups(player.uuid);
             if(updatedGroups[groupId]) {
-                logger.info(`已更新权限组: ${JSON.stringify(updatedGroups[groupId])}`);
+                logDebug(`已更新权限组: ${JSON.stringify(updatedGroups[groupId])}`);
             }
         } else {
             player.tell("§c权限组修改失败！");

@@ -2,6 +2,7 @@
 
 const PERMISSION_DATA_PATH = './plugins/area/permissions.json';
 const { getDbSession } = require('./database');
+const {logDebug, logInfo, logWarning, logError } = require('./logger');
 
 // 加载权限组数据
 function loadPermissionData() {
@@ -76,7 +77,7 @@ function savePermissionData(data) {
         // 提交事务
         db.exec("COMMIT");
         
-        logger.info(`成功保存${count}条权限数据到数据库`);
+        logDebug(`成功保存${count}条权限数据到数据库`);
         return true;
     } catch(e) {
         // 发生错误时回滚事务

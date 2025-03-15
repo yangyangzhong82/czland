@@ -1,6 +1,6 @@
 // database.js
 let dbSession = null;
-
+const {logDebug, logInfo, logWarning, logError } = require('./logger');
 // 初始化数据库连接
 function initDatabase() {
     try {
@@ -18,7 +18,7 @@ function initDatabase() {
         // 创建表结构
         createTables();
         
-        logger.info("区域系统数据库连接成功");
+        logDebug("区域系统数据库连接成功");
         return true;
     } catch(e) {
         logger.error(`数据库连接失败: ${e}`);

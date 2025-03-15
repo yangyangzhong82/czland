@@ -1,5 +1,6 @@
 // playerSettings.js
 const { getDbSession } = require('./database');
+const {logDebug, logInfo, logWarning, logError } = require('./logger');
 const DEFAULT_SETTINGS = {
     displayActionBar: true,    // 是否显示ActionBar
     displayTitle: true,        // 是否显示标题
@@ -80,7 +81,7 @@ function updatePlayerSettings(uuid, newSettings) {
         ]);
         
         stmt.execute();
-        //logger.info(`成功更新玩家${uuid}的设置`);
+        //logDebug(`成功更新玩家${uuid}的设置`);
         return true;
     } catch(e) {
         logger.error(`更新玩家设置失败: ${e}`);

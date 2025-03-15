@@ -6,6 +6,7 @@ const { PERMISSIONS } = require('./permissionRegistry');
 const { loadConfig } = require('./configManager');
 const config = loadConfig();
 const iListenAttentively = require('../iListenAttentively-LseExport/lib/iListenAttentively.js');
+const {logDebug, logInfo, logWarning, logError } = require('./logger');
 
 function checkPriorityPermission(player, pos, permissionId) {
     const areaData = getAreaData();
@@ -13,7 +14,7 @@ function checkPriorityPermission(player, pos, permissionId) {
     
     // 如果不在任何区域内，允许操作
     if (areasAtPos.length === 0) {
-        logger.info("位置不在任何区域内，默认允许操作");
+        logDebug("位置不在任何区域内，默认允许操作");
         return true;
     }
     
@@ -22,20 +23,20 @@ function checkPriorityPermission(player, pos, permissionId) {
         const areaId = areaInfo.id;
         const area = areaInfo.area;
         
-        logger.info(`检查区域 ${areaId} (${area.name}) 权限`);
+        logDebug(`检查区域 ${areaId} (${area.name}) 权限`);
         
         // 检查玩家是否有权限
         const hasPermission = checkPermission(player, areaData, areaId, permissionId);
         
         // 只要有一个区域允许，就立即返回允许
         if (hasPermission) {
-            logger.info(`权限检查通过，区域 ${areaId} 授予权限`);
+            logDebug(`权限检查通过，区域 ${areaId} 授予权限`);
             return true;
         }
     }
     
     // 所有区域都不允许
-    logger.info("所有相关区域均拒绝权限");
+    logDebug("所有相关区域均拒绝权限");
     return false;
 }
 
@@ -44,18 +45,18 @@ mc.listen("onDestroyBlock", function(player, block) {
     const pos = block.pos;
     const areaData = getAreaData();
     
-    logger.info(`玩家 ${player.name} 尝试破坏方块 at (${pos.x}, ${pos.y}, ${pos.z})`);
+    logDebug(`玩家 ${player.name} 尝试破坏方块 at (${pos.x}, ${pos.y}, ${pos.z})`);
     
     for(let areaId in areaData) {
         const area = areaData[areaId];
         if(isInArea(pos, area)) {
-            logger.info(`方块在区域 ${areaId} (${area.name}) 内`);
+            logDebug(`方块在区域 ${areaId} (${area.name}) 内`);
         
             
             // 检查玩家是否有权限
             const hasPermission = checkPriorityPermission(player, pos, PERMISSIONS.BREAK.id);
 
-            logger.info(`权限检查结果: ${hasPermission}`);
+            logDebug(`权限检查结果: ${hasPermission}`);
             
             if(!hasPermission) {
                 player.tell("§c你没有权限在此区域破坏方块！");
@@ -64,7 +65,7 @@ mc.listen("onDestroyBlock", function(player, block) {
         }
     }
     
-    logger.info("允许破坏方块");
+    logDebug("允许破坏方块");
     return true;
 });
 
@@ -73,17 +74,17 @@ mc.listen("onPlaceBlock", function(player, block) {
     const pos = block.pos;
     const areaData = getAreaData();
     
-    logger.info(`玩家 ${player.name} 尝试放置方块 at (${pos.x}, ${pos.y}, ${pos.z})`);
+    logDebug(`玩家 ${player.name} 尝试放置方块 at (${pos.x}, ${pos.y}, ${pos.z})`);
     
     for(let areaId in areaData) {
         const area = areaData[areaId];
         if(isInArea(pos, area)) {
-            logger.info(`方块在区域 ${areaId} (${area.name}) 内`);
+            logDebug(`方块在区域 ${areaId} (${area.name}) 内`);
             
             // 检查玩家是否有权限
 
             const hasPermission = checkPriorityPermission(player, pos, PERMISSIONS.PLACE.id);
-            logger.info(`权限检查结果: ${hasPermission}`);
+            logDebug(`权限检查结果: ${hasPermission}`);
             
             if(!hasPermission) {
                 player.tell("§c你没有权限在此区域放置方块！");
@@ -92,7 +93,7 @@ mc.listen("onPlaceBlock", function(player, block) {
         }
     }
     
-    logger.info("允许放置方块");
+    logDebug("允许放置方块");
     return true;
 });
 
@@ -106,12 +107,12 @@ mc.listen("onOpenContainer", function(player, block) {
         if(isInArea(pos, area)) {
             // 根据不同容器类型检查权限
             let permissionId;
-            logger.info(`方块在区域 ${areaId} (${area.name}) 内`);
+            logDebug(`方块在区域 ${areaId} (${area.name}) 内`);
             
             switch(block.type) {
                 case "minecraft:chest":
                     permissionId = PERMISSIONS.OPEN_CONTAINER.id
-                    logger.info(`检测到箱子，需要权限: ${permissionId}`);
+                    logDebug(`检测到箱子，需要权限: ${permissionId}`);
                     break;
                 case "minecraft:trapped_chest":
                     permissionId = PERMISSIONS.OPEN_TRAPPEDCHEST.id;
@@ -262,7 +263,7 @@ mc.listen("onDropItem", function(player, item) {
 mc.listen("onEntityExplode", function(entity, pos) {
     const areaData = getAreaData();
     
-    logger.info(`检测到实体爆炸事件 at (${pos.x}, ${pos.y}, ${pos.z}), 实体类型: ${entity.type}`);
+    logDebug(`检测到实体爆炸事件 at (${pos.x}, ${pos.y}, ${pos.z}), 实体类型: ${entity.type}`);
     
     for(let areaId in areaData) {
         const area = areaData[areaId];
@@ -310,7 +311,7 @@ mc.listen("onEntityExplode", function(entity, pos) {
             }
             
             if(!isAllowed) {
-                logger.info(`区域 ${areaId} 不允许 ${entity.type} 类型的爆炸`);
+                logDebug(`区域 ${areaId} 不允许 ${entity.type} 类型的爆炸`);
                 return false;
             }
         }
@@ -321,7 +322,7 @@ mc.listen("onEntityExplode", function(entity, pos) {
 mc.listen("onBlockExplode", function(source, pos) {  // 修改参数以匹配API
     const areaData = getAreaData();
     
-    logger.info(`检测到方块爆炸事件 at (${pos.x}, ${pos.y}, ${pos.z}), 来源: ${source ? source.type : "unknown"}`);
+    logDebug(`检测到方块爆炸事件 at (${pos.x}, ${pos.y}, ${pos.z}), 来源: ${source ? source.type : "unknown"}`);
     
     // 遍历所有受影响的方块
     for(let areaId in areaData) {
@@ -329,13 +330,13 @@ mc.listen("onBlockExplode", function(source, pos) {  // 修改参数以匹配API
         if(isInArea(pos, area)) {
             // 检查区域是否允许方块爆炸
             if(!area.rules || !area.rules.allowBlockExplosion) {
-                logger.info(`区域 ${areaId} (${area.name}) 不允许方块爆炸，已拦截`);
+                logDebug(`区域 ${areaId} (${area.name}) 不允许方块爆炸，已拦截`);
                 return false; // 拦截爆炸
             }
         }
     }
     
-    logger.info("未找到需要保护的区域，允许爆炸");
+    logDebug("未找到需要保护的区域，允许爆炸");
     return true;
 });
 
@@ -343,14 +344,14 @@ mc.listen("onBlockExplode", function(source, pos) {  // 修改参数以匹配API
 mc.listen("onFireSpread", function(pos) {
     const areaData = getAreaData();
     
-    logger.info(`检测到火焰蔓延 at (${pos.x}, ${pos.y}, ${pos.z})`);
+    logDebug(`检测到火焰蔓延 at (${pos.x}, ${pos.y}, ${pos.z})`);
     
     for(let areaId in areaData) {
         const area = areaData[areaId];
         if(isInArea(pos, area)) {
             // 检查区域是否允许火焰蔓延
             if(!area.rules || !area.rules.allowFireSpread) {
-                logger.info(`区域 ${areaId} 不允许火焰蔓延`);
+                logDebug(`区域 ${areaId} 不允许火焰蔓延`);
                 return false;
             }
         }
@@ -375,7 +376,7 @@ iListenAttentively.emplaceListener(
             dimid: dim === "Overworld" ? 0 : (dim === "Nether" ? 1 : 2)  // 转换维度ID
         };
         
-        logger.info(`检测到火焰尝试燃烧方块 at (${x}, ${y}, ${z}) 维度: ${dim}`);
+        logDebug(`检测到火焰尝试燃烧方块 at (${x}, ${y}, ${z}) 维度: ${dim}`);
         
         // 获取区域数据
         const areaData = getAreaData();
@@ -386,7 +387,7 @@ iListenAttentively.emplaceListener(
             if(isInArea(pos, area)) {
                 // 检查区域是否允许火焰烧毁方块
                 if(!area.rules || !area.rules.allowFireBurnBlock) {
-                    logger.info(`区域 ${areaId} (${area.name}) 不允许火焰烧毁方块，已拦截`);
+                    logDebug(`区域 ${areaId} (${area.name}) 不允许火焰烧毁方块，已拦截`);
                     event["cancelled"] = true;  // 拦截燃烧
                     return;
                 }
@@ -394,11 +395,11 @@ iListenAttentively.emplaceListener(
         }
         
         // 不在任何区域内或所有区域允许，不拦截
-        logger.info("允许火焰烧毁方块");
+        logDebug("允许火焰烧毁方块");
     },
     iListenAttentively.EventPriority.High
 );
 function log(message) {
-    logger.info(`[区域系统] ${message}`);
+    logDebug(`[区域系统] ${message}`);
 }
 

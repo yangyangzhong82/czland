@@ -1,5 +1,5 @@
 // permissionRegistry.js - 集中定义所有权限
-
+const {logDebug, logInfo, logWarning, logError } = require('./logger');
 // 权限定义
 const PERMISSIONS = {
     // 建筑类权限

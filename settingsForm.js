@@ -1,6 +1,6 @@
 // settingsForm.js
 const { getPlayerSettings, updatePlayerSettings } = require('./playerSettings');
-
+const {logDebug, logInfo, logWarning, logError } = require('./logger');
 function showSettingsForm(pl) {
     const settings = getPlayerSettings(pl.uuid);
     

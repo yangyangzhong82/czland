@@ -2,6 +2,7 @@
 const { isInArea, checkNewAreaOverlap ,checkAreaSizeLimits} = require('./utils');
 const { calculateAreaPrice, handleAreaPurchase } = require('./economy');
 const config = require('./config');
+const {logDebug, logInfo, logWarning, logError } = require('./logger');
 // 显示创建区域的表单
 function showCreateAreaForm(pl, point1, point2, areaData, playerData, saveAreaData, updateAreaCallback, checkPlayerCallback) {
     const form = mc.newCustomForm();
@@ -19,6 +20,21 @@ function showCreateAreaForm(pl, point1, point2, areaData, playerData, saveAreaDa
         if (!areaName) {
             player.tell("§c区域名称不能为空！");
             return;
+        }
+        
+        // 添加区域数量检查
+        const { isAreaAdmin } = require('./areaAdmin');
+        const { countPlayerAreas } = require('./utils');
+        const { loadConfig } = require('./configManager');
+        const config = loadConfig();
+        
+        // 区域管理员无视限制
+        if (!isAreaAdmin(player.uuid) && config.maxAreasPerPlayer !== -1) {
+            const ownedAreas = countPlayerAreas(player.xuid, areaData);
+            if (ownedAreas >= config.maxAreasPerPlayer) {
+                player.tell(`§c你已达到最大区域数量限制 (${config.maxAreasPerPlayer})！请删除一些现有区域后再创建新的。`);
+                return;
+            }
         }
         const newArea = {
             point1: { ...point1 },

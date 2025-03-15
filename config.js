@@ -1,6 +1,6 @@
 // config.js
 const { getDbSession } = require('./database');
-
+const {logDebug, logInfo, logWarning, logError } = require('./logger');
 // 读取区域数据
 function loadAreaData() {
     try {
@@ -9,7 +9,7 @@ function loadAreaData() {
         // 先检查表是否存在
         const tableCheck = db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='areas'");
         if (!tableCheck || tableCheck.length <= 1) {  // Removed redundant condition
-            logger.info("区域表不存在或为空，将返回空对象");
+            logDebug("区域表不存在或为空，将返回空对象");
             return {};
         }
         
@@ -22,12 +22,12 @@ function loadAreaData() {
         }
         
         if (results.length <= 1) { // 只有表头或空结果
-            logger.info("区域表中没有数据记录");
+            logDebug("区域表中没有数据记录");
             return {};
         }
         
         // 输出调试信息
-        logger.info(`成功读取到${results.length - 1}条区域记录`);
+        logDebug(`成功读取到${results.length - 1}条区域记录`);
         
         // 转换为应用中使用的对象结构
         const areaData = {};
@@ -163,7 +163,7 @@ function saveAreaData(data) {
         // 提交事务
         db.exec("COMMIT");
         
-        logger.info(`成功保存${Object.keys(data).length}个区域数据到数据库`);
+        logDebug(`成功保存${Object.keys(data).length}个区域数据到数据库`);
         return true;
     } catch(e) {
         // 发生错误时回滚事务

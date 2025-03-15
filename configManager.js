@@ -1,7 +1,8 @@
 // configManager.js
 const CONFIG_PATH = './plugins/area/config.json';
+const CURRENT_VERSION = "1.1.0";
 const DEFAULT_CONFIG = {
-    version: "1.0.0",
+    version: CURRENT_VERSION,
     shulkerBoxTypes: [
         "minecraft:shulker_box",
         "minecraft:undyed_shulker_box"
@@ -11,10 +12,11 @@ const DEFAULT_CONFIG = {
         "minecraft:chipped_anvil",
         "minecraft:damaged_anvil"
     ],
-    debug: false,
+    debug: true,
     defaultGroup: "visitor",
     displayAreaInfo: true,
     areaInfoDisplayDuration: 5,
+    maxAreasPerPlayer: 5,
     defaultGroup: "visitor",
     defaultGroupPermissions: [
         "break",
@@ -25,6 +27,8 @@ const DEFAULT_CONFIG = {
     ],
     economy: {
         enabled: true, // 是否启用经济系统
+        type: "money", // 经济类型: "money" 或 "scoreboard"
+        scoreboardObjective: "money", // 当type为"scoreboard"时使用的计分板名称
         pricePerBlock: 1, // 每个方块的基础价格
         priceByVolume: true, // 是否按体积计算价格
         priceByDimension: { // 按维度设置价格倍率
@@ -64,31 +68,92 @@ const DEFAULT_CONFIG = {
 
 };
 
+function mergeConfig(userConfig, defaultConfig) {
+    const result = { ...userConfig };
+    
+    for (const key in defaultConfig) {
+        // 如果用户配置中没有该键，直接使用默认值
+        if (!(key in result)) {
+            result[key] = defaultConfig[key];
+            continue;
+        }
+        
+        // 如果两者都是对象且不是数组，递归合并
+        if (
+            typeof defaultConfig[key] === 'object' && 
+            defaultConfig[key] !== null && 
+            !Array.isArray(defaultConfig[key]) &&
+            typeof result[key] === 'object' && 
+            result[key] !== null && 
+            !Array.isArray(result[key])
+        ) {
+            result[key] = mergeConfig(result[key], defaultConfig[key]);
+        }
+        // 否则保留用户配置
+    }
+    
+    return result;
+}
 // 加载配置
 function loadConfig() {
+    const dir = './plugins/area';
+    if (!File.exists(dir)) {
+        File.mkdir(dir);
+    }
+    
     if (!File.exists(CONFIG_PATH)) {
         // 如果配置不存在,创建默认配置
         saveConfig(DEFAULT_CONFIG);
+        logger.info("区域保护系统: 已创建默认配置文件");
         return DEFAULT_CONFIG;
     }
 
     try {
         const content = File.readFrom(CONFIG_PATH);
-        return JSON.parse(content);
+        let userConfig = JSON.parse(content);
+        
+        // 检查版本
+        if (userConfig.version !== CURRENT_VERSION) {
+            logger.info(`区域保护系统: 配置文件版本不匹配 (用户版本: ${userConfig.version || '未知'}, 当前版本: ${CURRENT_VERSION})`);
+            logger.info("区域保护系统: 正在更新配置文件...");
+            
+            // 合并配置
+            const updatedConfig = mergeConfig(userConfig, DEFAULT_CONFIG);
+            // 更新版本号
+            updatedConfig.version = CURRENT_VERSION;
+            
+            // 保存更新后的配置
+            saveConfig(updatedConfig);
+            logger.info("区域保护系统: 配置文件已更新至最新版本");
+            
+            return updatedConfig;
+        }
+        
+        return userConfig;
     } catch (e) {
         logger.error(`配置文件读取失败: ${e}`);
+        // 备份损坏的配置文件
+        if (File.exists(CONFIG_PATH)) {
+            const backupPath = `${CONFIG_PATH}.backup.${Date.now()}`;
+            File.copy(CONFIG_PATH, backupPath);
+            logger.info(`已将损坏的配置文件备份至: ${backupPath}`);
+        }
+        // 使用默认配置
+        saveConfig(DEFAULT_CONFIG);
         return DEFAULT_CONFIG;
     }
 }
 
 // 保存配置
 function saveConfig(config) {
-    const dir = './plugins/area';
-    if (!File.exists(dir)) {
-        File.mkdir(dir);
+    try {
+        return File.writeTo(CONFIG_PATH, JSON.stringify(config, null, 2));
+    } catch (e) {
+        logger.error(`配置文件保存失败: ${e}`);
+        return false;
     }
-    return File.writeTo(CONFIG_PATH, JSON.stringify(config, null, 2));
 }
+
 
 module.exports = {
     loadConfig,

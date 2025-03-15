@@ -5,6 +5,7 @@ const { isInArea, checkNewAreaOverlap, isAreaWithinArea } = require('./utils');
 const { getPlayerData } = require('./playerDataManager');
 const { checkPermission } = require('./permission');
 const { getAreaData } = require('./czareaprotection');
+const {logDebug, logInfo, logWarning, logError } = require('./logger');
 function showSubAreaManageForm(player, areaId) {
     const areaData = getAreaData();
     const area = areaData[areaId];
@@ -271,7 +272,7 @@ function initializeSubareaRecords() {
     
     if(updated) {
         saveAreaData(areaData);
-        logger.info("子区域记录已初始化");
+        logDebug("子区域记录已初始化");
     }
 }
 

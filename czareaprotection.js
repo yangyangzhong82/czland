@@ -4,7 +4,8 @@ const { isInArea } = require('./utils');
 const { getPlayerData } = require('./playerDataManager');
 const { initDatabase } = require('./database');
 const { getDbSession } = require('./database');
-
+const { loadConfig } = require('./configManager');
+const {logDebug, logInfo, logWarning, logError } = require('./logger');
 let playerCurrentAreas = {};
 let areaData = {}; 
 // 初始化时连接数据库
@@ -13,12 +14,12 @@ function initializePlugin() {
     if (initDatabase()) {
         logger.info("区域系统数据库初始化成功");
         areaData = loadAreaData();
+
+        const { loadAreaAdmins } = require('./areaAdmin');
+        loadAreaAdmins();
     }
 }
 
-
-
-// 初始化区域数据
 
 
 function getAreaData() {
@@ -122,5 +123,5 @@ initializePlugin();
 module.exports = {
     getAreaData,
     updateAreaData,
-    checkPlayerArea // 导出检查函数供其他模块使用
+    checkPlayerArea,
 };
