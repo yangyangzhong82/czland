@@ -399,7 +399,5 @@ iListenAttentively.emplaceListener(
     },
     iListenAttentively.EventPriority.High
 );
-function log(message) {
-    logDebug(`[区域系统] ${message}`);
-}
+
 

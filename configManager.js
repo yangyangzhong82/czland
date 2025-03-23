@@ -17,7 +17,6 @@ const DEFAULT_CONFIG = {
     displayAreaInfo: true,
     areaInfoDisplayDuration: 5,
     maxAreasPerPlayer: 5,
-    defaultGroup: "visitor",
     defaultGroupPermissions: [
         "break",
         "place", 
