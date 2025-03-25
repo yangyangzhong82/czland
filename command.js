@@ -3,47 +3,25 @@
 const { showMainForm } = require('./mainForm');
 const { getPlayerData, setPlayerData } = require('./playerDataManager');
 const {logDebug, logInfo, logWarning, logError } = require('./logger');
+const {showAreaVisualization, clearAreaVisualization } = require('./bsci');
 function registerCommands(areaData, showCreateAreaForm, saveAreaData) {
-    const cmd = mc.newCommand("area", "区域管理命令", PermType.GameMasters);
+    const cmd = mc.newCommand("area", "区域管理命令", PermType.Any);
     cmd.setAlias("ar");
     cmd.setEnum("AreaActions", ["pos1", "pos2", "create"]);
     cmd.setEnum("AreaSettings", ["settings"]);
-    cmd.setEnum("AdminActions", ["op", "deop", "admins"]);
 
     cmd.optional("action", ParamType.Enum, "AreaActions", 1);
     cmd.optional("name", ParamType.RawText);
     cmd.optional("settings", ParamType.Enum, "AreaSettings", 1);
-    cmd.optional("adminAction", ParamType.Enum, "AdminActions", 1);
     cmd.optional("playerName", ParamType.String);
 
     cmd.overload(["AreaActions"]);
     cmd.overload(["AreaActions", "name"]);
     cmd.overload(["AreaSettings"]);
-    cmd.overload(["AdminActions", "playerName"]);
-    cmd.overload(["AdminActions"])
     cmd.overload([]); 
 
     cmd.setCallback((_cmd, ori, out, res) => {
-        // 处理管理员命令
-        if (res.adminAction) {
-            // 只允许控制台或OP执行
-            if (!ori.player || (ori.player && ori.player.permLevel >= 1)) {
-                switch (res.adminAction) {
-                    case "op":
-                        handleAddAdmin(ori, out, res.playerName, areaData);
-                        break;
-                    case "deop":
-                        handleRemoveAdmin(ori, out, res.playerName);
-                        break;
-                    case "admins":
-                        handleListAdmins(ori, out);
-                        break;
-                }
-                return;
-            } else {
-                return out.error("§c只有OP或控制台才能执行此命令！");
-            }
-        }
+        
         
         // 确保有玩家对象才执行以下操作
         if (!ori.player) {
@@ -79,6 +57,34 @@ function registerCommands(areaData, showCreateAreaForm, saveAreaData) {
     cmd.setup(); 
 }
 
+function registerAdminCommand(areaData) {
+    const adminCmd = mc.newCommand("areaadmin", "区域管理员控制命令", PermType.Console);
+    adminCmd.setAlias("landop");
+    adminCmd.setEnum("AdminActions", ["op", "deop", "admins"]);
+    
+    adminCmd.mandatory("adminAction", ParamType.Enum, "AdminActions", 1);
+    adminCmd.optional("playerName", ParamType.String);
+    
+    adminCmd.overload(["AdminActions", "playerName"]);
+    adminCmd.overload(["AdminActions"]);
+    
+    adminCmd.setCallback((_cmd, ori, out, res) => {
+            switch (res.adminAction) {
+                case "op":
+                    handleAddAdmin(ori, out, res.playerName, areaData);
+                    break;
+                case "deop":
+                    handleRemoveAdmin(ori, out, res.playerName);
+                    break;
+                case "admins":
+                    handleListAdmins(ori, out);
+                    break;
+            }
+        
+    });
+    adminCmd.setup();
+}
+
 
 function handlePos1(pl, out) {
     let pos1 = pl.pos;
@@ -90,6 +96,10 @@ function handlePos1(pl, out) {
             dimid: pos1.dimid,     
         }
     });
+    const playerData = getPlayerData()[pl.uuid];
+    if (playerData && playerData.pos2 && playerData.pos1.dimid === playerData.pos2.dimid) {
+        showAreaVisualization(pl, playerData.pos1, playerData.pos2);
+    }
     return out.success(`§a已设置点1: x:${pos1.x} y:${pos1.y} z:${pos1.z} 维度:${pos1.dimid}`);
 }
 
@@ -103,6 +113,10 @@ function handlePos2(pl, out) {
             dimid: pos2.dimid,      
         }
     });
+    const playerData = getPlayerData()[pl.uuid];
+    if (playerData && playerData.pos1 && playerData.pos1.dimid === playerData.pos2.dimid) {
+        showAreaVisualization(pl, playerData.pos1, playerData.pos2);
+    }
     return out.success(`§a已设置点2: x:${pos2.x} y:${pos2.y} z:${pos2.z} 维度:${pos2.dimid}`);
 }
 
@@ -129,7 +143,6 @@ function handleAddAdmin(ori, out, playerName, areaData) {
         return out.error("§c请指定玩家名称！");
     }
     
-    // 使用新的查找玩家函数（支持离线玩家）
     const { findPlayerByName, addAreaAdmin, saveAreaAdmins } = require('./areaAdmin');
     const playerInfo = findPlayerByName(playerName);
     
@@ -137,9 +150,7 @@ function handleAddAdmin(ori, out, playerName, areaData) {
         return out.error(`§c找不到玩家: ${playerName}`);
     }
     
-    // 添加到领地管理员列表
     if (addAreaAdmin(playerInfo.uuid, playerInfo.name)) {
-        // 保存管理员数据
         saveAreaAdmins();
         
         // 如果玩家在线，通知玩家
@@ -227,6 +238,7 @@ function handleListAdmins(ori, out) {
     
     return out.success(message);
 }
+registerAdminCommand();
 
 
 module.exports = {

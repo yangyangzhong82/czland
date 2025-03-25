@@ -1,8 +1,19 @@
 // configManager.js
 const CONFIG_PATH = './plugins/area/config.json';
-const CURRENT_VERSION = "1.1.0";
+const CURRENT_VERSION = "1.3.0";
 const DEFAULT_CONFIG = {
     version: CURRENT_VERSION,
+    visualization: {
+        enabled: true,
+        duration: 30,          // 显示时间，单位为秒
+        color: {
+            r: 0,              // 红色分量
+            g: 191,            // 绿色分量
+            b: 255,            // 蓝色分量
+            a: 255             // 透明度
+        },
+        thickness: 1.5         // 线条粗细
+    },
     shulkerBoxTypes: [
         "minecraft:shulker_box",
         "minecraft:undyed_shulker_box"
@@ -13,7 +24,11 @@ const DEFAULT_CONFIG = {
         "minecraft:damaged_anvil"
     ],
     debug: true,
-    defaultGroup: "visitor",
+    toolSelector: {
+        enabled: false,
+        tool: "minecraft:stick",  // Default tool is a stick, null would disable
+
+    },
     displayAreaInfo: true,
     areaInfoDisplayDuration: 5,
     maxAreasPerPlayer: 5,

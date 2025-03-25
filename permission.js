@@ -16,7 +16,23 @@ function getDefaultGroupConfig() {
     return config.defaultGroup || "visitor";
 }
 
-
+function groupHasAdminPermissions(groupId) {
+    const groups = getAvailableGroups();
+    const group = groups[groupId];
+    if (!group || !group.permissions) return false;
+    
+    const { PERMISSIONS } = require('./permissionRegistry');
+    
+    // 检查组内是否有"管理"类别的权限
+    for (const permId of group.permissions) {
+        for (const key in PERMISSIONS) {
+            if (PERMISSIONS[key].id === permId && PERMISSIONS[key].category === "管理") {
+                return true;
+            }
+        }
+    }
+    return false;
+}
 
 // 保存默认权限组配置
 function saveDefaultGroupConfig(data) {
@@ -373,7 +389,8 @@ module.exports = {
     getPlayerAllPermissions,
     getSystemDefaultPermissions,
     setSystemDefaultPermissions,
-    hasPermissionInCustomGroup
+    hasPermissionInCustomGroup,
+    groupHasAdminPermissions
 };
 
 // 初始化时加载权限

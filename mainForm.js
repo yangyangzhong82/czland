@@ -263,51 +263,79 @@ function showAreaOperateForm(player, areaId) {
 
     const fm = mc.newSimpleForm();
     fm.setTitle(`${area.name} - 操作菜单`);
-    fm.addButton("查看信息");
     
-    // 只有有manage权限的玩家才能看到这些按钮
-    if(checkPermission(player, areaData, areaId, "manage")) {
+    // 用于存储按钮和对应的处理函数
+    const buttonHandlers = [];
+    
+    // 查看信息 - 总是可用
+    fm.addButton("查看信息");
+    buttonHandlers.push(() => showAreaInfo(player, areaId));
+
+    fm.addButton("显示区域轮廓");
+    buttonHandlers.push(() => {
+        const { showAreaWithChildrenVisualization } = require('./bsci');
+        showAreaWithChildrenVisualization(player, areaId);
+    });
+    
+
+    
+    // 检查是否是区域所有者
+    const isOwner = area.xuid === player.xuid;
+    
+    // 修改名称按钮 - 需要rename权限
+    if(checkPermission(player, areaData, areaId, "rename")) {
         fm.addButton("修改名称");
+        buttonHandlers.push(() => showRenameForm(player, areaId));
+    }
+    
+    // 管理权限按钮 - 需要setPlayerPermissions权限
+    if(checkPermission(player, areaData, areaId, "setPlayerPermissions")) {
         fm.addButton("管理权限");
+        buttonHandlers.push(() => showPermissionManageForm(player, areaId));
+    }
+    
+    // 删除区域按钮 - 仅所有者可见
+    if(isOwner) {
         fm.addButton("删除区域");
+        buttonHandlers.push(() => confirmDeleteArea(player, areaId));
+    }
+    
+    // 权限组管理按钮 - 需要manage权限
+    if(checkPermission(player, areaData, areaId, "manage")) {
         fm.addButton("权限组管理");
+        buttonHandlers.push(() => showGroupManageForm(player, areaId));
+    }
+    
+    // 区域规则设置按钮 - 需要setAreaRules权限
+    if(checkPermission(player, areaData, areaId, "setAreaRules")) {
         fm.addButton("区域规则设置");
+        buttonHandlers.push(() => showAreaRulesForm(player, areaId));
+    }
+    
+    // 重新设置区域范围按钮 - 需要resizeArea权限
+    if(checkPermission(player, areaData, areaId, "resizeArea")) {
         fm.addButton("重新设置区域范围");
+        buttonHandlers.push(() => confirmResizeArea(player, areaId));
+    }
+    
+    // 转让区域按钮 - 仅所有者可见
+    if(isOwner) {
         fm.addButton("转让区域");
-        fm.addButton("子区域管理"); // 添加子区域管理按钮
+        buttonHandlers.push(() => showTransferAreaForm(player, areaId));
+    }
+    
+    // 子区域管理按钮 - 需要subareaManage权限
+    if(checkPermission(player, areaData, areaId, "subareaManage")) {
+        fm.addButton("子区域管理");
+        buttonHandlers.push(() => showSubAreaManageForm(player, areaId));
     }
 
     player.sendForm(fm, (player, id) => {
         if (id === null) return;
         
-        switch (id) {
-            case 0:
-                showAreaInfo(player, areaId);
-                break;
-            case 1:
-                showRenameForm(player, areaId);
-                break;
-            case 2:
-                showPermissionManageForm(player, areaId);
-                break;
-            case 3:
-                confirmDeleteArea(player, areaId);
-                break;
-            case 4:
-                showGroupManageForm(player,areaId); 
-                break;
-            case 5:
-                showAreaRulesForm(player, areaId); 
-                break;
-            case 6:
-                confirmResizeArea(player, areaId); 
-                break;
-            case 7:
-                showTransferAreaForm(player, areaId); 
-                break;
-            case 8: 
-                showSubAreaManageForm(player, areaId);
-                break;
+        // 执行对应按钮的处理函数
+        if (id >= 0 && id < buttonHandlers.length) {
+            buttonHandlers[id]();
         }
     });
 }
@@ -316,6 +344,11 @@ function showAreaOperateForm(player, areaId) {
 
 function confirmResizeArea(player, areaId) {
     const playerData = getPlayerData();
+    if(!checkPermission(player, areaData, areaId, "resizeArea")) {
+        player.tell("§c你没有权限修改区域范围！");
+        showAreaOperateForm(player, areaId);
+        return;
+    }
     if(!playerData[player.uuid] || !playerData[player.uuid].pos1 || !playerData[player.uuid].pos2) {
         player.tell("§c请先设置两个新的边界点！");
         return;
@@ -826,6 +859,11 @@ function confirmTransferArea(player, areaId, newOwner) {
 function showPermissionManageForm(player, areaId) {
     const areaData = getAreaData();
     const area = areaData[areaId];
+    if(!checkPermission(player, areaData, areaId, "setPlayerPermissions")) {
+        player.tell("§c你没有权限管理区域成员！");
+        showAreaOperateForm(player, areaId);
+        return;
+    }
     
     const fm = mc.newSimpleForm();
     fm.setTitle(`${area.name} - 权限管理`);
@@ -854,6 +892,9 @@ function showPermissionManageForm(player, areaId) {
 function showAddMemberForm(player, areaId, currentPage = 0, filter = "") {
     const areaData = getAreaData();
     const area = areaData[areaId];
+    
+    // 检查玩家是否有高级管理权限
+    const hasAdminRight = checkPermission(player, areaData, areaId, "grantAdminPermissions");
     
     // 获取所有玩家数据
     const allPlayers = getOfflinePlayerData() || [];
@@ -888,11 +929,16 @@ function showAddMemberForm(player, areaId, currentPage = 0, filter = "") {
         );
     }
     
-    // 权限组选择
+    // 权限组选择，根据权限过滤
     const groups = getAvailableGroups();
-    const groupNames = Object.keys(groups)
+    const { groupHasAdminPermissions } = require('./permission');
+    
+    // 过滤权限组
+    const filteredGroupIds = Object.keys(groups)
         .filter(g => g !== 'owner') // 不显示owner组
-        .map(g => `${g}(${groups[g].name})`);
+        .filter(g => hasAdminRight || !groupHasAdminPermissions(g)); // 如果没有admin权限，过滤掉管理类权限组
+    
+    const groupNames = filteredGroupIds.map(g => `${g}(${groups[g].name})`);
     fm.addDropdown("选择权限组", groupNames);
     
     // 完成选择开关
@@ -906,7 +952,8 @@ function showAddMemberForm(player, areaId, currentPage = 0, filter = "") {
         if (data === null) return;
         
         const keyword = data[0].trim();
-        const selectedGroup = Object.keys(groups).filter(g => g !== 'owner')[data[pagePlayers.length + 1]];
+        const selectedGroupIndex = data[pagePlayers.length + 1];
+        const selectedGroup = filteredGroupIds[selectedGroupIndex];
         const confirmed = data[pagePlayers.length + 2];
         const newPage = data[pagePlayers.length + 3];
         
@@ -922,6 +969,13 @@ function showAddMemberForm(player, areaId, currentPage = 0, filter = "") {
             for (let i = 0; i < pagePlayers.length; i++) {
                 if (data[i + 1]) { // 如果该玩家被选中
                     const targetXuid = pagePlayers[i].uuid;
+                    
+                    // 再次验证权限以防止客户端篡改
+                    if (!hasAdminRight && groupHasAdminPermissions(selectedGroup)) {
+                        player.tell(`§c你没有权限设置管理类权限组!`);
+                        continue;
+                    }
+                    
                     if (setPlayerPermission(areaData, areaId, targetXuid, selectedGroup)) {
                         added++;
                     }
@@ -1072,20 +1126,35 @@ function showAreaDefaultGroupForm(player, areaId) {
         return;
     }
     
+    // 检查玩家是否有高级管理权限
+    const hasAdminRight = checkPermission(player, areaData, areaId, "grantAdminPermissions");
+    
     const fm = mc.newCustomForm();
     fm.setTitle("设置区域默认权限组");
     
-    // 获取所有可用的权限组（仅包括自定义权限组）
+    // 获取所有可用的权限组，并根据权限过滤
     const groups = getAvailableGroups();
-    const groupNames = Object.keys(groups).map(g => `${g}(${groups[g].name})`);
+    const { groupHasAdminPermissions } = require('./permission');
+    
+    // 过滤权限组
+    const filteredGroupIds = Object.keys(groups)
+        .filter(g => hasAdminRight || !groupHasAdminPermissions(g)); // 如果没有admin权限，过滤掉管理类权限组
+    
+    const groupNames = filteredGroupIds.map(g => `${g}(${groups[g].name})`);
     
     // 添加一个"使用系统默认权限"选项
     groupNames.unshift("使用系统默认权限");
     
     // 获取当前的默认权限组
     const currentDefault = getAreaDefaultGroup(areaId);
-    let currentIndex = currentDefault ? Object.keys(groups).indexOf(currentDefault) + 1 : 0;
-    if (currentIndex < 0) currentIndex = 0;
+    let currentIndex = 0;
+    
+    if (currentDefault) {
+        const idx = filteredGroupIds.indexOf(currentDefault);
+        if (idx >= 0) {
+            currentIndex = idx + 1; // +1 因为第一项是"使用系统默认权限"
+        }
+    }
     
     fm.addLabel("§e选择一个权限组作为该区域的默认权限组\n§7未设置特定权限组的玩家将使用此权限组");
     fm.addDropdown("选择默认权限组", groupNames, currentIndex);
@@ -1106,7 +1175,15 @@ function showAreaDefaultGroupForm(player, areaId) {
             }
         } else {
             // 选择使用自定义权限组
-            const selectedGroup = Object.keys(groups)[data[1] - 1];
+            const selectedGroup = filteredGroupIds[data[1] - 1];
+            
+            // 再次验证权限以防止客户端篡改
+            if (!hasAdminRight && groupHasAdminPermissions(selectedGroup)) {
+                player.tell(`§c你没有权限设置包含管理权限的默认权限组!`);
+                showPermissionManageForm(player, areaId);
+                return;
+            }
+            
             const success = setAreaDefaultGroup(areaId, selectedGroup);
             if(success) {
                 player.tell(`§a已将区域默认权限组设置为: ${groups[selectedGroup].name}`);
@@ -1218,7 +1295,11 @@ function showGroupListForm(player) {
 function showAreaRulesForm(player, areaId) {
     const areaData = getAreaData();
     const area = areaData[areaId];
-    
+    if(!checkPermission(player, areaData, areaId, "setAreaRules")) {
+        player.tell("§c你没有权限设置区域规则！");
+        showAreaOperateForm(player, areaId);
+        return;
+    }
     // 初始化规则对象
     if(!area.rules) {
         area.rules = {
@@ -1233,7 +1314,17 @@ function showAreaRulesForm(player, areaId) {
             allowOtherExplosion: false,
             allowBlockExplosion: false,
             allowFireSpread: false,
-            allowFireBurnBlock: false
+            allowFireBurnBlock: false,
+            allowMossGrowth: false,
+            allowSculkSpread: false,
+            allowLiquidFlow: false,
+            allowEntityPressurePlate: false,
+            allowEntityRide: false,
+            allowWitherDestroy: false,
+            allowMobNaturalSpawn: false,
+            allowEndermanTakeBlock: false,
+            allowEndermanPlaceBlock: false,
+            allowExplosionDamageBlock: false
         };
     }
     
@@ -1253,6 +1344,16 @@ function showAreaRulesForm(player, areaId) {
     fm.addSwitch("允许方块爆炸", area.rules.allowBlockExplosion);
     fm.addSwitch("允许火焰蔓延", area.rules.allowFireSpread);
     fm.addSwitch("允许火焰烧毁方块", area.rules.allowFireBurnBlock);
+    fm.addSwitch("允许苔藓生长", area.rules.allowMossGrowth);
+    fm.addSwitch("允许幽匿催发体生成", area.rules.allowSculkSpread);
+    fm.addSwitch("允许区域外液体流入", area.rules.allowLiquidFlow);
+    fm.addSwitch("允许实体踩压力板", area.rules.allowEntityPressurePlate);
+    fm.addSwitch("允许生物乘骑", area.rules.allowEntityRide);
+    fm.addSwitch("允许凋灵破坏方块", area.rules.allowWitherDestroy);
+    fm.addSwitch("允许自然生成生物", area.rules.allowMobNaturalSpawn);
+    fm.addSwitch("允许末影人拿起方块", area.rules.allowEndermanTakeBlock);
+    fm.addSwitch("允许末影人放置方块", area.rules.allowEndermanPlaceBlock);
+    fm.addSwitch("允许爆炸破坏区域内方块", area.rules.allowExplosionDamageBlock);
 
     player.sendForm(fm, (player, data) => {
         if(data === null) {
@@ -1273,6 +1374,16 @@ function showAreaRulesForm(player, areaId) {
         area.rules.allowBlockExplosion = data[9];
         area.rules.allowFireSpread = data[10];
         area.rules.allowFireBurnBlock = data[11];  
+        area.rules.allowMossGrowth = data[12];
+        area.rules.allowSculkSpread = data[13];
+        area.rules.allowLiquidFlow = data[14];
+        area.rules.allowEntityPressurePlate = data[15];
+        area.rules.allowEntityRide = data[16];
+        area.rules.allowWitherDestroy = data[17];
+        area.rules.allowMobNaturalSpawn = data[18];
+        area.rules.allowEndermanTakeBlock = data[19];
+        area.rules.allowEndermanPlaceBlock = data[20];
+        area.rules.allowExplosionDamageBlock = data[21];
         if(saveAreaData(areaData)) {
             player.tell("§a区域规则设置已保存！");
             

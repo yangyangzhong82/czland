@@ -38,7 +38,8 @@ function showCreateAreaForm(pl, point1, point2, areaData, playerData, saveAreaDa
         }
         const newArea = {
             point1: { ...point1 },
-            point2: { ...point2 }
+            point2: { ...point2 },
+            dimid: point1.dimid
         };
         const sizeCheck = checkAreaSizeLimits(point1, point2, config, false);
     

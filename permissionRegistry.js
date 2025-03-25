@@ -27,6 +27,79 @@ const PERMISSIONS = {
         description: "允许在区域内丢出物品",
         category: "物品"
     },
+    RIDE_ENTITY: {
+        id: "rideEntity",
+        name: "乘骑生物",
+        description: "允许在区域内乘骑生物",
+        category: "交互"
+    },
+    ARMOR_STAND: {
+        id: "armorStand",
+        name: "操作盔甲架",
+        description: "允许在区域内操作盔甲架",
+        category: "交互"
+    },
+    USE_PRESSURE_PLATE: {
+        id: "usePressurePlate",
+        name: "踩压力板",
+        description: "允许在区域内踩压力板",
+        category: "交互"
+    },
+    // 展示框操作权限
+    ITEM_FRAME: {
+    id: "itemFrame",
+    name: "操作展示框",
+    description: "允许在区域内操作展示框",
+    category: "交互"
+},
+
+// 使用床权限
+     USE_BED: {
+    id: "useBed", 
+    name: "使用床",
+    description: "允许在区域内使用床",
+    category: "交互"
+},
+
+// 对方块使用物品权限
+USE_ITEM_ON_BLOCK: {
+    id: "useItemOnBlock",
+    name: "对方块使用物品",
+    description: "允许在区域内对方块使用物品",
+    category: "交互"
+},
+
+// 使用物品权限
+USE_ITEM: {
+    id: "useItem",
+    name: "使用物品",
+    description: "允许在区域内使用物品",
+    category: "物品"
+},
+
+// 攻击方块权限
+ATTACK_BLOCK: {
+    id: "attackBlock",
+    name: "攻击方块",
+    description: "允许在区域内攻击方块",
+    category: "交互"
+},
+
+// 攻击实体权限
+ATTACK_ENTITY: {
+    id: "attackEntity",
+    name: "攻击实体",
+    description: "允许在区域内攻击实体",
+    category: "交互"
+},
+
+// 使用钓鱼竿钓起实体权限
+USE_FISHING_ROD: {
+    id: "useFishingRod",
+    name: "使用钓鱼竿",
+    description: "允许在区域内使用钓鱼竿钓起实体",
+    category: "交互"
+},
     // 容器交互权限
     OPEN_CONTAINER: {
         id: "openchest",
@@ -165,6 +238,30 @@ const PERMISSIONS = {
         id: "delete",
         name: "删除区域",
         description: "允许删除整个区域",
+        category: "管理"
+    },
+    GRANT_ADMIN_PERMISSIONS: {
+    id: "grantAdminPermissions",
+    name: "授予管理权限",
+    description: "允许为玩家设置包含管理权限的权限组",
+    category: "管理"
+    },
+    SET_PLAYER_PERMISSIONS: {
+        id: "setPlayerPermissions",
+        name: "管理玩家权限",
+        description: "允许为其他玩家设置权限组",
+        category: "管理"
+    },
+    RESIZE_AREA: {
+        id: "resizeArea",
+        name: "修改区域范围",
+        description: "允许更改区域的边界",
+        category: "管理"
+    },
+    SET_AREA_RULES: {
+        id: "setAreaRules",
+        name: "设置区域规则",
+        description: "允许修改区域规则",
         category: "管理"
     },
     RENAME: {

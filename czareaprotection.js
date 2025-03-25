@@ -14,7 +14,8 @@ function initializePlugin() {
     if (initDatabase()) {
         logger.info("区域系统数据库初始化成功");
         areaData = loadAreaData();
-
+        const { init: initToolSelector } = require('./toolSelector');
+        initToolSelector();
         const { loadAreaAdmins } = require('./areaAdmin');
         loadAreaAdmins();
     }
@@ -26,7 +27,6 @@ function getAreaData() {
     return areaData;
 }
 
-// 延迟注册命令，等待模块完全加载
 function initializeCommands() {
     const { registerCommands } = require('./command');
     registerCommands(areaData, 

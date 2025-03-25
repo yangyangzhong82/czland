@@ -86,6 +86,9 @@ function createSubArea(parentAreaId, name, point1, point2, player) {
             message: "父区域不存在！"
         };
     }
+    const { loadConfig } = require('./configManager');
+    const config = loadConfig();
+    const { checkAreaSizeLimits } = require('./utils');
     // 检查区域大小限制
     const sizeCheck = checkAreaSizeLimits(point1, point2, config, true); // true表示子区域
     
