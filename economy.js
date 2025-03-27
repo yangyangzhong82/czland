@@ -8,9 +8,9 @@ try {
     czmoneyGetMoney = ll.imports("CzMoney", "getMoney");
     czmoneyReduceMoney = ll.imports("CzMoney", "reduceMoney");
     czmoneySetMoney = ll.imports("CzMoney", "setMoney");
-    logInfo("成功导入 CzMoney 经济系统");
+    //logInfo("成功导入 CzMoney 经济系统");
 } catch (e) {
-    logError("导入 CzMoney 经济系统失败: " + e);
+    //logError("导入 CzMoney 经济系统失败: " + e);
 }
 // 计算区域价格
 function calculateAreaPrice(point1, point2) {
@@ -26,19 +26,31 @@ function calculateAreaPrice(point1, point2) {
     let price;
     if(config.priceFormula.useCustom) {
         try {
-            const formula = config.priceFormula.formula
-                .replace('length', length)
-                .replace('width', width) 
-                .replace('height', height)
-                .replace('volume', volume)
-                .replace('pricePerBlock', config.pricePerBlock);
+            // 使用正则表达式替换所有变量，并确保变量边界
+            let formula = config.priceFormula.formula;
+            formula = formula.replace(/\blength\b/g, length);
+            formula = formula.replace(/\bwidth\b/g, width);
+            formula = formula.replace(/\bheight\b/g, height);
+            formula = formula.replace(/\bvolume\b/g, volume);
+            formula = formula.replace(/\bpricePerBlock\b/g, config.pricePerBlock);
+            
+            // 添加调试日志
+            logDebug(`计算价格使用公式: ${formula}`);
+            
             price = eval(formula);
+            
+            // 确保结果是有效数字
+            if (typeof price !== 'number' || isNaN(price)) {
+                throw new Error('公式计算结果不是有效数字');
+            }
         } catch(e) {
-            logger.error(`价格计算公式错误: ${e}`);
-            price = volume * config.pricePerBlock;
+            logError(`价格计算公式错误: ${e}`);
+            price = config.priceByVolume ? 
+                volume * config.pricePerBlock :
+                (length + width + height) * config.pricePerBlock;
         }
-    } else {
-        // 使用默认计算方式
+    }else {
+        // 添加这个 else 块来处理非自定义公式的情况
         price = config.priceByVolume ? 
             volume * config.pricePerBlock :
             (length + width + height) * config.pricePerBlock;

@@ -1,6 +1,8 @@
 // utils.js
-const {logDebug, logInfo, logWarning, logError } = require('./logger');
-// // 检查玩家是否在某个区域内
+const { logDebug, logInfo, logWarning, logError } = require('./logger');
+const { querySpatialIndex } = require('./spatialIndex'); // 引入空间索引查询函数
+
+// 检查玩家是否在某个区域内
 function isInArea(pos, area) {
     // 维度必须相同
     if(pos.dimid !== area.dimid) return false;
@@ -16,16 +18,32 @@ function isInArea(pos, area) {
     // 检查玩家坐标是否在范围内
     return pos.x >= minX && pos.x <= maxX &&
            pos.y >= minY && pos.y <= maxY &&
-           pos.z >= minZ && pos.z <= maxZ;
+            pos.z >= minZ && pos.z <= maxZ;
 }
 
-function getPriorityAreasAtPosition(pos, areaData) {
+/**
+ * 获取指定位置的所有区域，并按优先级排序（使用空间索引优化）
+ * @param {object} pos - 玩家位置 {x, y, z, dimid}
+ * @param {object} areaData - 所有区域的数据 { areaId: areaObject, ... }
+ * @param {object} spatialIndex - 构建好的空间索引
+ * @returns {Array<{id: string, area: object, isSubarea: boolean, parentAreaId: string|null}>}
+ */
+function getPriorityAreasAtPosition(pos, areaData, spatialIndex) {
     let areasAtPos = [];
-    
-    // 收集所有包含该位置的区域
-    for(let areaId in areaData) {
+    const candidateAreaIds = querySpatialIndex(pos, spatialIndex); // 使用索引获取候选区域
+
+    logDebug(`位置 ${JSON.stringify(pos)} 的候选区域数: ${candidateAreaIds.length}`);
+
+    // 只检查候选区域
+    for (const areaId of candidateAreaIds) {
         const area = areaData[areaId];
-        if(isInArea(pos, area)) {
+        // 确保区域数据存在，以防索引和实际数据短暂不同步（虽然理论上应该同步）
+        if (!area) {
+            logWarning(`空间索引中的区域ID ${areaId} 在 areaData 中未找到，可能数据不同步`);
+            continue;
+        }
+
+        if (isInArea(pos, area)) {
             areasAtPos.push({
                 id: areaId,
                 area: area,
@@ -34,20 +52,25 @@ function getPriorityAreasAtPosition(pos, areaData) {
             });
         }
     }
-    
+
     // 按优先级排序：子区域优先于父区域
     areasAtPos.sort((a, b) => {
-        if(a.isSubarea && !b.isSubarea) return -1;
-        if(!a.isSubarea && b.isSubarea) return 1;
-        return 0;
+        // 可以根据 area.priority 字段进行更精细的排序（如果需要）
+        if (a.isSubarea && !b.isSubarea) return -1;
+        if (!a.isSubarea && b.isSubarea) return 1;
+        // 如果优先级相同（都是子区域或都不是），可以根据创建时间或其他标准排序
+        // return (b.area.priority || 0) - (a.area.priority || 0); // 假设有 priority 字段
+        return 0; // 保持原有简单排序
     });
-    
+
+    logDebug(`位置 ${JSON.stringify(pos)} 实际命中的区域数: ${areasAtPos.length}`);
     return areasAtPos;
 }
 
-// 获取位置优先级最高的区域
-function getHighestPriorityArea(pos, areaData) {
-    const areas = getPriorityAreasAtPosition(pos, areaData);
+
+// 获取位置优先级最高的区域 (需要传递 spatialIndex)
+function getHighestPriorityArea(pos, areaData, spatialIndex) {
+    const areas = getPriorityAreasAtPosition(pos, areaData, spatialIndex); // 传递 spatialIndex
     return areas.length > 0 ? areas[0] : null;
 }
 
@@ -198,6 +221,43 @@ function countPlayerAreas(playerXuid, areaData) {
     return count;
 }
 
+/**
+ * 检查ID是否匹配配置中的某个模式
+ * @param {string} id - 物品、方块或实体的ID
+ * @param {Array} patterns - 要匹配的模式数组
+ * @returns {boolean} 是否匹配
+ */
+function matchesIdPattern(id, patterns) {
+    if (!patterns || !Array.isArray(patterns)) return false;
+    
+    for (const pattern of patterns) {
+        // 检查是否是正则表达式对象(如 /pattern/)
+        if (pattern instanceof RegExp) {
+            if (pattern.test(id)) return true;
+        }
+        // 检查是否是字符串形式的正则表达式(如 "/pattern/")
+        else if (typeof pattern === 'string' && pattern.startsWith('/') && pattern.lastIndexOf('/') > 0) {
+            const regexParts = pattern.split('/');
+            if (regexParts.length >= 3) {
+                try {
+                    const flags = regexParts[regexParts.length - 1];
+                    const patternStr = regexParts.slice(1, -1).join('/');
+                    const regex = new RegExp(patternStr, flags);
+                    if (regex.test(id)) return true;
+                } catch (e) {
+                    logWarning(`无效的正则表达式: ${pattern}, 错误: ${e.message}`);
+                }
+            }
+        }
+        // 直接字符串匹配
+        else if (pattern === id) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
 module.exports = {
     isInArea,
     checkAreasOverlap,
@@ -206,5 +266,6 @@ module.exports = {
     getPriorityAreasAtPosition, // 导出新函数
     getHighestPriorityArea,
     checkAreaSizeLimits,
-    countPlayerAreas
+    countPlayerAreas,
+    matchesIdPattern
 };

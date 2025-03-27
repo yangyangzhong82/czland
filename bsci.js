@@ -138,15 +138,15 @@ function showAreaWithChildrenVisualization(player, areaId) {
             id: visualizationIds,
             timerId: setTimeout(() => {
                 clearAreaVisualization(player);
-                player.tell("§7区域可视化已自动关闭");
+                //player.tell("§7区域可视化已自动关闭");
             }, config.visualization.duration * 1000) // 转换为毫秒
         };
         
         // 提示信息
         if (subAreaCount > 0) {
-            player.tell(`§b已显示主区域(§a蓝色§b)和 §e${subAreaCount} §b个子区域(§6橙色§b)的轮廓，将在§e${config.visualization.duration}秒§b后自动消失`);
+            //player.tell(`§b已显示主区域(§a蓝色§b)和 §e${subAreaCount} §b个子区域(§6橙色§b)的轮廓，将在§e${config.visualization.duration}秒§b后自动消失`);
         } else {
-            player.tell(`§b区域可视化已显示，将在§e${config.visualization.duration}秒§b后自动消失`);
+            //player.tell(`§b区域可视化已显示，将在§e${config.visualization.duration}秒§b后自动消失`);
         }
     } else {
         player.tell("§c无法创建区域可视化");

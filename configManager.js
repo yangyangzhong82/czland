@@ -1,6 +1,6 @@
 // configManager.js
 const CONFIG_PATH = './plugins/area/config.json';
-const CURRENT_VERSION = "1.3.0";
+const CURRENT_VERSION = "1.6.0";
 const DEFAULT_CONFIG = {
     version: CURRENT_VERSION,
     visualization: {
@@ -23,6 +23,59 @@ const DEFAULT_CONFIG = {
         "minecraft:chipped_anvil",
         "minecraft:damaged_anvil"
     ],
+    itemTypes: {
+        shovel: [
+            "minecraft:wooden_shovel",
+            "minecraft:stone_shovel",
+            "minecraft:iron_shovel",
+            "minecraft:golden_shovel",
+            "minecraft:diamond_shovel",
+            "minecraft:netherite_shovel"
+        ],
+        axe: [
+            "minecraft:wooden_axe",
+            "minecraft:stone_axe",
+            "minecraft:iron_axe",
+            "minecraft:golden_axe",
+            "minecraft:diamond_axe",
+            "minecraft:netherite_axe"
+        ],
+        hoe: [
+            "minecraft:wooden_hoe",
+            "minecraft:stone_hoe",
+            "minecraft:iron_hoe",
+            "minecraft:golden_hoe",
+            "minecraft:diamond_hoe",
+            "minecraft:netherite_hoe"
+        ],
+        bow: ["minecraft:bow"],
+        crossbow: ["minecraft:crossbow"],
+        trident: ["minecraft:trident"],
+        potion: ["minecraft:potion"],
+        splashPotion: ["minecraft:splash_potion"],
+        lingeringPotion: ["minecraft:lingering_potion"],
+        expBottle: ["minecraft:experience_bottle"],
+        fishingRod: ["minecraft:fishing_rod"]
+    },
+    blockTypes: {
+        shovelable: [
+            "minecraft:grass_block",
+            "minecraft:dirt",
+            "minecraft:podzol",
+            "minecraft:mycelium"
+        ],
+        axeable: [
+            /minecraft:.*_log/,
+            /minecraft:.*_wood/,
+            "minecraft:hay_block"
+        ],
+        hoeable: [
+            "minecraft:grass_block",
+            "minecraft:dirt",
+            "minecraft:grass_path",
+            "minecraft:coarse_dirt"
+        ]
+    },    
     debug: true,
     toolSelector: {
         enabled: false,
@@ -32,9 +85,10 @@ const DEFAULT_CONFIG = {
     displayAreaInfo: true,
     areaInfoDisplayDuration: 5,
     maxAreasPerPlayer: 5,
+    // defaultGroup: "visitor", // 移除此行，不再使用单一的默认组名
     defaultGroupPermissions: [
         "break",
-        "place", 
+        "place",
         "pickupItems",
         "dropItems",
         "openContainer"

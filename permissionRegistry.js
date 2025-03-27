@@ -33,6 +33,12 @@ const PERMISSIONS = {
         description: "允许在区域内乘骑生物",
         category: "交互"
     },
+    INTERACT_ENTITY: {
+        id: "InteractEntity",
+        name: "实体交互",
+        description: "允许在区域内交互生物",
+        category: "交互"
+    },
     ARMOR_STAND: {
         id: "armorStand",
         name: "操作盔甲架",
@@ -76,6 +82,66 @@ USE_ITEM: {
     description: "允许在区域内使用物品",
     category: "物品"
 },
+USE_SHOVEL: {
+    id: "useShovel",
+    name: "使用铲子",
+    description: "允许在区域内使用铲子转换草方块、泥土等",
+    category: "交互"
+},
+USE_AXE: {
+    id: "useAxe",
+    name: "使用斧头",
+    description: "允许在区域内使用斧头转换原木等方块",
+    category: "交互"
+},
+USE_HOE: {
+    id: "useHoe",
+    name: "使用锄头",
+    description: "允许在区域内使用锄头转换泥土、草方块等",
+    category: "交互"
+},
+USE_BOW: {
+    id: "useBow",
+    name: "使用弓",
+    description: "允许在区域内使用弓",
+    category: "物品"
+},
+USE_CROSSBOW: {
+    id: "useCrossbow",
+    name: "使用弩",
+    description: "允许在区域内使用弩",
+    category: "物品"
+},
+USE_TRIDENT: {
+    id: "useTrident",
+    name: "使用三叉戟",
+    description: "允许在区域内使用三叉戟",
+    category: "物品"
+},
+USE_POTION: {
+    id: "usePotion",
+    name: "使用药水",
+    description: "允许在区域内使用普通药水",
+    category: "物品"
+},
+USE_SPLASH_POTION: {
+    id: "useSplashPotion",
+    name: "使用喷溅药水",
+    description: "允许在区域内使用喷溅药水",
+    category: "物品"
+},
+USE_LINGERING_POTION: {
+    id: "useLingeringPotion",
+    name: "使用滞留药水",
+    description: "允许在区域内使用滞留药水",
+    category: "物品"
+},
+USE_EXP_BOTTLE: {
+    id: "useExpBottle",
+    name: "使用附魔之瓶",
+    description: "允许在区域内使用附魔之瓶",
+    category: "物品"
+},
 
 // 攻击方块权限
 ATTACK_BLOCK: {
@@ -97,7 +163,7 @@ ATTACK_ENTITY: {
 USE_FISHING_ROD: {
     id: "useFishingRod",
     name: "使用钓鱼竿",
-    description: "允许在区域内使用钓鱼竿钓起实体",
+    description: "允许在区域内使用钓鱼竿",
     category: "交互"
 },
     // 容器交互权限

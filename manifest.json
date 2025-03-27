@@ -11,6 +11,9 @@
         },
         {
             "name": "iListenAttentively-LseExport"
+        },
+        {
+            "name": "PlayerData"
         }
     ]
 }
