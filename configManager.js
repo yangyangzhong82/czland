@@ -1,8 +1,11 @@
 // configManager.js
 const CONFIG_PATH = './plugins/area/config.json';
-const CURRENT_VERSION = "1.6.0";
+const CURRENT_VERSION = "1.6.3";
 const DEFAULT_CONFIG = {
     version: CURRENT_VERSION,
+    spatialIndex: {
+        chunkSize: 16  // 默认区块大小
+    },
     visualization: {
         enabled: true,
         duration: 30,          // 显示时间，单位为秒
@@ -24,6 +27,13 @@ const DEFAULT_CONFIG = {
         "minecraft:damaged_anvil"
     ],
     itemTypes: {
+        minecart: [
+            "minecraft:minecart", 
+            "minecraft:chest_minecart", 
+            "minecraft:hopper_minecart", 
+            "minecraft:tnt_minecart", 
+            "minecraft:command_block_minecart"
+        ],
         shovel: [
             "minecraft:wooden_shovel",
             "minecraft:stone_shovel",
@@ -58,6 +68,59 @@ const DEFAULT_CONFIG = {
         fishingRod: ["minecraft:fishing_rod"]
     },
     blockTypes: {
+        daylightDetector: ["minecraft:daylight_detector"],
+        rails: [
+            "minecraft:rail", 
+            "minecraft:golden_rail", 
+            "minecraft:detector_rail", 
+            "minecraft:activator_rail"
+        ],
+        cauldron: [
+            "minecraft:cauldron",
+            "minecraft:water_cauldron",
+            "minecraft:lava_cauldron",
+            "minecraft:powder_snow_cauldron"
+        ],
+        comparator: ["minecraft:comparator"],
+        repeater: ["minecraft:repeater"],
+        noteblock: ["minecraft:note_block"],
+        jukebox: ["minecraft:jukebox"],
+        button: [
+            /minecraft:.*_button/
+        ],
+        lever: ["minecraft:lever"],
+        composter: ["minecraft:composter"],
+        door: [
+            /minecraft:.*_door/
+        ],
+        trapdoor: [
+            /minecraft:.*_trapdoor/
+        ],
+        fenceGate: [
+            /minecraft:.*_fence_gate/
+        ],
+        campfire: [
+            "minecraft:campfire",
+            "minecraft:soul_campfire"
+        ],
+        beehive: [
+            "minecraft:beehive",
+            "minecraft:bee_nest"
+        ],
+        bookshelf: ["minecraft:chiseled_bookshelf"],
+        suspiciousBlock: [
+            "minecraft:suspicious_sand",
+            "minecraft:suspicious_gravel"
+        ],
+        respawnAnchor: ["minecraft:respawn_anchor"],
+        candle: [
+            /minecraft:.*candle/
+        ],
+        sign: [
+            /minecraft:.*_sign/,
+            /minecraft:.*_hanging_sign/
+        ],
+        dragonEgg: ["minecraft:dragon_egg"],
         shovelable: [
             "minecraft:grass_block",
             "minecraft:dirt",
@@ -74,6 +137,73 @@ const DEFAULT_CONFIG = {
             "minecraft:dirt",
             "minecraft:grass_path",
             "minecraft:coarse_dirt"
+        ]
+    },
+    entityTypes: {
+        villagers: [
+            "minecraft:villager", 
+            "minecraft:villager_v2", 
+            "minecraft:zombie_villager", 
+            "minecraft:zombie_villager_v2"],
+        chestBoats: [
+            "minecraft:chest_boat", 
+            "minecraft:chest_raft"], // 示例
+        chestMinecarts: [
+            "minecraft:chest_minecart"
+        ],
+        boats: [
+            "minecraft:boat", 
+            "minecraft:chest_boat", 
+            "minecraft:raft", 
+            "minecraft:chest_raft"], // 包含带箱子的
+        minecarts: [
+            "minecraft:minecart", 
+            "minecraft:chest_minecart", 
+            "minecraft:hopper_minecart", 
+            "minecraft:tnt_minecart", 
+            "minecraft:command_block_minecart"], // 包含带箱子的等
+        horses: [
+            "minecraft:horse", 
+            "minecraft:donkey", 
+            "minecraft:mule", 
+            "minecraft:skeleton_horse", 
+            "minecraft:zombie_horse", 
+            "minecraft:camel", 
+            "minecraft:llama", 
+            "minecraft:trader_llama", 
+            "minecraft:pig", 
+            "minecraft:strider"
+        ], // 包含其他类似坐骑
+        animals: [
+            "minecraft:chicken", "minecraft:cow", "minecraft:pig", "minecraft:sheep",
+            "minecraft:wolf", "minecraft:villager", "minecraft:mooshroom", "minecraft:squid",
+            "minecraft:rabbit", "minecraft:bat", "minecraft:iron_golem", "minecraft:snow_golem",
+            "minecraft:ocelot", "minecraft:horse", "minecraft:donkey", "minecraft:mule",
+            "minecraft:polar_bear", "minecraft:llama", "minecraft:parrot", "minecraft:dolphin",
+            "minecraft:turtle", "minecraft:panda", "minecraft:fox", "minecraft:bee",
+            "minecraft:strider", "minecraft:goat", "minecraft:axolotl", "minecraft:glow_squid",
+            "minecraft:cat", "minecraft:frog", "minecraft:allay", "minecraft:camel",
+            "minecraft:trader_llama", "minecraft:tropical_fish", "minecraft:pufferfish",
+            "minecraft:salmon", "minecraft:cod", "minecraft:tadpole", "minecraft:sniffer"
+        ],
+        monsters: [
+            "minecraft:zombie", "minecraft:skeleton", "minecraft:creeper", "minecraft:spider",
+            "minecraft:enderman", "minecraft:witch", "minecraft:slime", "minecraft:ghast",
+            "minecraft:magma_cube", "minecraft:blaze", "minecraft:zombie_pigman", "minecraft:piglin",
+            "minecraft:zombified_piglin", "minecraft:wither_skeleton", "minecraft:guardian",
+            "minecraft:elder_guardian", "minecraft:shulker", "minecraft:husk", "minecraft:stray",
+            "minecraft:phantom", "minecraft:drowned", "minecraft:pillager", "minecraft:ravager",
+            "minecraft:vindicator", "minecraft:evoker", "minecraft:vex", "minecraft:hoglin",
+            "minecraft:zoglin", "minecraft:piglin_brute", "minecraft:warden", "minecraft:wither",
+            "minecraft:ender_dragon", "minecraft:cave_spider", "minecraft:silverfish",
+            "minecraft:endermite", "minecraft:evoker_fangs"
+        ],
+        minecarts: [
+            "minecraft:minecart", "minecraft:chest_minecart", "minecraft:hopper_minecart",
+            "minecraft:tnt_minecart", "minecraft:command_block_minecart"
+        ],
+        vehicles: [
+            "minecraft:boat", "minecraft:chest_boat"
         ]
     },    
     debug: true,

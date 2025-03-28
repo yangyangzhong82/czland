@@ -4,7 +4,7 @@ const { getAreaData } = require('./czareaprotection');
 const { isInArea } = require('./utils');
 const getOfflinePlayerData = ll.import("PlayerData", "getOfflinePlayerData");
 const { getPlayerCustomGroups, createCustomGroup, editCustomGroup, deleteCustomGroup, getAllCustomGroups } = require('./customGroups'); // Ensure getAllCustomGroups is imported if needed elsewhere, though getAvailableGroups uses it internally
-const { checkPermission, setPlayerPermission, getPlayerPermission, getAvailableGroups, getAreaDefaultGroup, setAreaDefaultGroup } = require('./permission'); // Removed DEFAULT_GROUPS import
+const { checkPermission, setPlayerPermission, getPlayerPermission, getAvailableGroups, getAreaDefaultGroup, setAreaDefaultGroup, resetCache } = require('./permission'); // Removed DEFAULT_GROUPS import, Added resetCache
 const { getPlayerData } = require('./playerDataManager');
 const { calculateAreaPrice, handleAreaPurchase, handleAreaRefund } = require('./economy');
 // LiteLoader-AIDS automatic generated
@@ -1418,6 +1418,9 @@ function showGroupEditForm(player, groupId) {
             if(updatedGroups[groupId]) {
                 logDebug(`已更新权限组: ${JSON.stringify(updatedGroups[groupId])}`);
             }
+            // 清除权限缓存以确保更改立即生效
+            resetCache();
+            logInfo(`权限组 ${groupId} 修改后，权限缓存已重置`);
         } else {
             player.tell("§c权限组修改失败！");
         }

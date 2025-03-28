@@ -70,8 +70,8 @@ function createTables() {
             additionalData TEXT DEFAULT NULL
         );
     `);
-    // 为经常用于查找的列创建索引
-    dbSession.exec(`CREATE INDEX IF NOT EXISTS idx_areas_coords ON areas (dimid, minX, minY, minZ, maxX, maxY, maxZ);`); // <- Optimization: Index for spatial queries
+    // 为经常用于查找的列E创建索引
+    dbSession.exec(`CREATE INDEX IF NOT XISTS idx_areas_coords ON areas (dimid, minX, minY, minZ, maxX, maxY, maxZ);`); // <- Optimization: Index for spatial queries
     dbSession.exec(`CREATE INDEX IF NOT EXISTS idx_areas_parent ON areas (parentAreaId);`); // <- Optimization: Index for parent lookup
 
     // 权限表 - 复合主键通常自带索引，但可以为单独查询添加索引
