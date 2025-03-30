@@ -10,11 +10,11 @@ function showSubAreaManageForm(player, areaId) {
     const areaData = getAreaData();
     const area = areaData[areaId];
     
-    // 如果是子区域,不允许再创建子区域
-    if(area.isSubarea) {
-        player.tell("§c子区域不能再创建子区域！");
-        return;
-    }
+    // 移除对子区域创建子区域的限制
+    // if(area.isSubarea) {
+    //     player.tell("§c子区域不能再创建子区域！");
+    //     return;
+    // }
     
     if(!checkPermission(player, areaData, areaId, "subareaManage")) {
         player.tell("§c你没有管理子区域的权限！");
@@ -77,6 +77,7 @@ function showCreateSubAreaForm(player, parentAreaId) {
 }
 
 function createSubArea(parentAreaId, name, point1, point2, player) {
+    const { updateAreaData } = require('./czareaprotection');  
     const areaData = getAreaData();
     const parentArea = areaData[parentAreaId];
     
@@ -118,11 +119,31 @@ function createSubArea(parentAreaId, name, point1, point2, player) {
         };
     }
     
-    // 检查是否与其他区域重叠
+    // 检查是否与其他区域重叠 (Optimized)
+    const { buildSpatialIndex } = require('./spatialIndex'); // 引入 buildSpatialIndex
+    const { checkNewAreaOverlap } = require('./utils'); // 引入优化后的 checkNewAreaOverlap
+
+    // 从 *除了父区域和其所有子区域(兄弟姐妹)* 之外的所有区域构建空间索引
     const areasToCheck = { ...areaData };
-    delete areasToCheck[parentAreaId];
-    
-    const overlapCheck = checkNewAreaOverlap(subArea, areasToCheck);
+    delete areasToCheck[parentAreaId]; // 排除直接父区域
+
+    // 查找并排除所有兄弟姐妹区域
+    if (parentArea && parentArea.subareas) {
+        for (const siblingId in parentArea.subareas) {
+            // 确保 siblingId 存在于 areasToCheck 中再删除
+            if (areasToCheck[siblingId]) {
+                delete areasToCheck[siblingId];
+                logDebug(`创建子区域 ${name} 时，从重叠检查中排除兄弟区域: ${siblingId}`);
+            }
+        }
+    }
+
+    const spatialIndex = buildSpatialIndex(areasToCheck); // 仅对需要检查的区域构建索引
+
+    // 将空间索引和相关的区域数据子集传递给检查函数
+    // 注意：需要传递 subArea (新区域), spatialIndex, 和 areasToCheck (用于查找重叠区域详情)
+    const overlapCheck = checkNewAreaOverlap(subArea, spatialIndex, areasToCheck);
+
     if(overlapCheck.overlapped) {
         return {
             success: false,
@@ -162,7 +183,7 @@ function createSubArea(parentAreaId, name, point1, point2, player) {
         parentArea.subareas = {};
     }
     parentArea.subareas[subareaId] = true;
-    
+    updateAreaData(areaData);
     // 保存数据
     if(saveAreaData(areaData)) {
         return {

@@ -13,9 +13,7 @@ function initDatabase() {
         dbSession = new DBSession("sqlite", {
             path: "./plugins/area/data.db",
             create: true,
-            // 启用WAL模式通常能提高并发写入性能，但会产生额外的wal和shm文件
-            // 可以根据实际测试效果决定是否启用
-            // flags: ["WAL"] // 可选优化
+            //flags: ["WAL"] // 可选优化
         });
 
         // 创建表结构 (放入事务中确保原子性)
@@ -49,7 +47,6 @@ function initDatabase() {
 
 // 创建所需的表结构
 function createTables() {
-    // 注意：在已有的事务中执行
     // 区域表 - 添加索引优化查询
     dbSession.exec(`
         CREATE TABLE IF NOT EXISTS areas (

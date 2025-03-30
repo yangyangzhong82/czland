@@ -1,16 +1,17 @@
 // logger.js
-const { loadConfig } = require('./configManager');
-const config = loadConfig();
+let isDebugEnabled = false; // Module-level flag for debug status
 
-
-
-
-
+// Function to initialize the logger, typically called once after config is loaded
+function initLogger(config) {
+    isDebugEnabled = config && config.debug === true;
+    logInfo(`Logger initialized. Debug mode: ${isDebugEnabled}`);
+}
 
 // 创建日志函数
 function logDebug(message) {
-    if (config.debug) {
-        logger.info(`[czland] ${message}`);
+    // 只检查模块级别的标志
+    if (isDebugEnabled) {
+        logger.info(`[czland] [DEBUG] ${message}`); // 使用 logger.info 打印调试信息，或根据需要调整级别
     }
 }
 
@@ -22,19 +23,20 @@ function logWarning(message) {
     logger.warn(`[czland] ${message}`);
 }
 
-function logError(message) {
-    logger.error(`[czland] ${message}`);
+function logError(message, stack = null) { // 允许传入堆栈信息
+    let logMessage = `[czland] [ERROR] ${message}`;
+    if (stack) {
+        logMessage += `\nStack Trace:\n${stack}`;
+    }
+    logger.error(logMessage);
 }
 
-// 更新配置（当配置更改时调用）
-function updateConfig(newConfig) {
-    config = newConfig;
-}
+// 移除 updateConfig 函数
 
 module.exports = {
+    initLogger, // 导出初始化函数
     logDebug,
     logInfo,
     logWarning,
-    logError,
-    updateConfig
+    logError
 };

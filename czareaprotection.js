@@ -4,21 +4,32 @@ const { isInArea } = require('./utils');
 const { getPlayerData } = require('./playerDataManager');
 const { initDatabase } = require('./database');
 const { getDbSession } = require('./database');
-const { loadConfig } = require('./configManager');
+const { loadConfig } = require('./configManager'); // 加载主配置文件的函数
 const { buildSpatialIndex } = require('./spatialIndex'); // 引入空间索引构建函数
-const {logDebug, logInfo, logWarning, logError } = require('./logger');
+const { initLogger, logDebug, logInfo, logWarning, logError } = require('./logger'); // 导入 initLogger
 let playerCurrentAreas = {};
 let areaData = {};
 let spatialIndex = {}; // 添加变量来存储空间索引
+let config = {}; // 添加变量来存储加载的配置
 // 初始化时连接数据库
 function initializePlugin() {
-    // 初始化数据库
+    // 1. 加载配置
+    config = loadConfig(); // 加载主配置文件 config.json
+    // 2. 初始化 Logger (必须在加载配置之后！)
+    initLogger(config);
+
+    logInfo("区域保护插件开始初始化..."); // 现在可以安全使用 logInfo/logDebug 了
+
+    // 3. 初始化数据库
     if (initDatabase()) {
         logger.info("区域系统数据库初始化成功");
-        areaData = loadAreaData();
+        areaData = loadAreaData(); // 加载区域数据
         spatialIndex = buildSpatialIndex(areaData); // 初始化时构建索引
+        logInfo(`空间索引构建完成，包含 ${Object.keys(spatialIndex).length} 个区块条目。`); // 添加日志
+
+        // 4. 初始化其他模块 (现在可以安全地依赖已初始化的 logger 和 config)
         const { init: initToolSelector } = require('./toolSelector');
-        initToolSelector();
+        initToolSelector(config); // 将配置传递给需要它的模块
         const { loadAreaAdmins } = require('./areaAdmin');
         loadAreaAdmins();
     }
@@ -81,39 +92,68 @@ function checkPlayerArea(pl) {
         const priorityArea = areasAtPos[0];
         const currentAreaId = priorityArea.id;
         const currentAreaName = priorityArea.area.name;
-        
+        const areaRules = priorityArea.area.rules || {}; // 获取区域规则，如果不存在则为空对象
+
+        // 检查区域规则是否允许显示 (默认允许)
+        const areaAllowsTitle = areaRules.displayTitle !== false; // 如果规则不存在或为 true，则允许
+        const areaAllowsActionBar = areaRules.displayActionBar !== false; // 如果规则不存在或为 true，则允许
+
         // 区域变化时更新玩家当前区域ID
         if(previousAreaId !== currentAreaId) {
             playerCurrentAreas[pl.uuid] = currentAreaId;
-            
-            // 标题显示 - 只在区域变化时显示，不受冷却时间限制
-            if(settings.displayTitle) {
+
+            // 标题显示 - 区域规则和玩家设置都允许时才显示
+            if(areaAllowsTitle && settings.displayTitle) {
                 pl.setTitle(`§e你已进入区域`, 2, 10, 40, 10);
                 pl.setTitle(`§b${currentAreaName}`, 3, 10, 40, 10);
                 pl._lastAreaDisplay = now; // 更新显示时间（放在显示之后）
             }
         }
-        
-        // ActionBar显示 - 显示子区域和主区域信息
-        if(settings.displayActionBar) {
-            let displayText = `§e当前位置: §b${currentAreaName}`;
-            
-            // 如果是子区域，添加主区域信息
-            if(priorityArea.isSubarea && priorityArea.parentAreaId) {
-                const parentArea = areaData[priorityArea.parentAreaId];
-                if(parentArea) {
-                    displayText += ` §7(属于 §f${parentArea.name}§7)`;
-                }
+
+        // ActionBar显示 - 区域规则和玩家设置都允许时才显示
+        if(areaAllowsActionBar && settings.displayActionBar) {
+            // --- 调试日志 ---
+            try {
+                logDebug(`[AreaCheck] Player ${pl.name} at (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}, dim ${pos.dimid})`);
+                logDebug(`[AreaCheck] Areas at pos (sorted): ${areasAtPos.map(a => `${a.id}(${a.area.name}, depth ${a.depth})`).join('; ')}`);
+                logDebug(`[AreaCheck] Priority Area Selected: ${priorityArea.id}(${priorityArea.area.name}, depth ${priorityArea.depth})`);
+            } catch (e) {
+                logError(`Error during area check debug logging: ${e.message}`);
             }
-            
-            pl.setTitle(displayText, 4, 3, 50, 4);
+            // --- 调试日志结束 ---
+
+            let displayText = `§e当前位置: §b${currentAreaName}`;
+
+            // 构建区域层级显示 (最多显示到祖父区域)
+            let currentParentId = priorityArea.parentAreaId;
+            let hierarchyString = "";
+            let level = 0;
+            const maxDisplayLevels = 2; // 最多显示父级和祖父级
+
+            while (currentParentId && areaData[currentParentId] && level < maxDisplayLevels) {
+                const parentArea = areaData[currentParentId];
+                if (level === 0) {
+                    hierarchyString = ` §7(属于 §f${parentArea.name}`; // 第一级父区域
+                } else {
+                    hierarchyString += ` §7/ §f${parentArea.name}`; // 更高层级的父区域用 / 分隔
+                }
+                currentParentId = parentArea.parentAreaId; // 移动到上一级
+                level++;
+            }
+
+            if (hierarchyString) {
+                hierarchyString += "§7)"; // 添加结尾括号
+                displayText += hierarchyString;
+            }
+
+            pl.setTitle(displayText, 4, 3, 50, 4); // 使用 type 4 (ActionBar)
         }
     } else {
         // 离开所有区域
         
         // 清除ActionBar
         if(settings.displayActionBar) {
-            pl.sendText("", 5); // type 5 清除 action bar
+            pl.sendText("", 4); // 使用 type 4 清除 action bar
         }
         // 重置玩家当前区域状态，以便下次进入时能触发标题显示
         if (playerCurrentAreas[pl.uuid] !== undefined) {

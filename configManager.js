@@ -1,13 +1,17 @@
 // configManager.js
 const CONFIG_PATH = './plugins/area/config.json';
-const CURRENT_VERSION = "1.6.3";
+const CURRENT_VERSION = "1.6.4";
+const { logInfo, logError, logDebug } = require('./logger'); // 确保引入 logger
+
 const DEFAULT_CONFIG = {
     version: CURRENT_VERSION,
     spatialIndex: {
         chunkSize: 16  // 默认区块大小
     },
+    // 旧的可视化配置，保留用于兼容或未来可能的其他可视化
+    /*
     visualization: {
-        enabled: true,
+        enabled: true, // 这个可以考虑是否保留，或者合并到 bsci.enabled
         duration: 30,          // 显示时间，单位为秒
         color: {
             r: 0,              // 红色分量
@@ -16,6 +20,31 @@ const DEFAULT_CONFIG = {
             a: 255             // 透明度
         },
         thickness: 1.5         // 线条粗细
+    },
+    */
+    // 新增 BSCI 专用配置
+    bsci: {
+        enabled: true,         // BSCI 功能总开关
+        duration: 30,          // 显示时间，单位为秒
+        thickness: 1.5,        // 线条粗细
+        mainAreaColor: {       // 主区域轮廓颜色
+            r: 0,
+            g: 191,
+            b: 255,
+            a: 255
+        },
+        subAreaColor: {        // 子区域轮廓颜色
+            r: 255,
+            g: 165,
+            b: 0,
+            a: 255
+        },
+        selectionPointColor: { // 选点时显示的颜色
+            r: 0,
+            g: 255,
+            b: 0,
+            a: 255
+        }
     },
     shulkerBoxTypes: [
         "minecraft:shulker_box",
@@ -28,10 +57,10 @@ const DEFAULT_CONFIG = {
     ],
     itemTypes: {
         minecart: [
-            "minecraft:minecart", 
-            "minecraft:chest_minecart", 
-            "minecraft:hopper_minecart", 
-            "minecraft:tnt_minecart", 
+            "minecraft:minecart",
+            "minecraft:chest_minecart",
+            "minecraft:hopper_minecart",
+            "minecraft:tnt_minecart",
             "minecraft:command_block_minecart"
         ],
         shovel: [
@@ -58,6 +87,12 @@ const DEFAULT_CONFIG = {
             "minecraft:diamond_hoe",
             "minecraft:netherite_hoe"
         ],
+        bucket: [
+            "minecraft:bucket",
+            "minecraft:water_bucket",
+            "minecraft:lava_bucket",
+            "minecraft:powder_snow_bucket"
+        ],
         bow: ["minecraft:bow"],
         crossbow: ["minecraft:crossbow"],
         trident: ["minecraft:trident"],
@@ -70,9 +105,9 @@ const DEFAULT_CONFIG = {
     blockTypes: {
         daylightDetector: ["minecraft:daylight_detector"],
         rails: [
-            "minecraft:rail", 
-            "minecraft:golden_rail", 
-            "minecraft:detector_rail", 
+            "minecraft:rail",
+            "minecraft:golden_rail",
+            "minecraft:detector_rail",
             "minecraft:activator_rail"
         ],
         cauldron: [
@@ -141,37 +176,37 @@ const DEFAULT_CONFIG = {
     },
     entityTypes: {
         villagers: [
-            "minecraft:villager", 
-            "minecraft:villager_v2", 
-            "minecraft:zombie_villager", 
+            "minecraft:villager",
+            "minecraft:villager_v2",
+            "minecraft:zombie_villager",
             "minecraft:zombie_villager_v2"],
         chestBoats: [
-            "minecraft:chest_boat", 
+            "minecraft:chest_boat",
             "minecraft:chest_raft"], // 示例
         chestMinecarts: [
             "minecraft:chest_minecart"
         ],
         boats: [
-            "minecraft:boat", 
-            "minecraft:chest_boat", 
-            "minecraft:raft", 
+            "minecraft:boat",
+            "minecraft:chest_boat",
+            "minecraft:raft",
             "minecraft:chest_raft"], // 包含带箱子的
         minecarts: [
-            "minecraft:minecart", 
-            "minecraft:chest_minecart", 
-            "minecraft:hopper_minecart", 
-            "minecraft:tnt_minecart", 
+            "minecraft:minecart",
+            "minecraft:chest_minecart",
+            "minecraft:hopper_minecart",
+            "minecraft:tnt_minecart",
             "minecraft:command_block_minecart"], // 包含带箱子的等
         horses: [
-            "minecraft:horse", 
-            "minecraft:donkey", 
-            "minecraft:mule", 
-            "minecraft:skeleton_horse", 
-            "minecraft:zombie_horse", 
-            "minecraft:camel", 
-            "minecraft:llama", 
-            "minecraft:trader_llama", 
-            "minecraft:pig", 
+            "minecraft:horse",
+            "minecraft:donkey",
+            "minecraft:mule",
+            "minecraft:skeleton_horse",
+            "minecraft:zombie_horse",
+            "minecraft:camel",
+            "minecraft:llama",
+            "minecraft:trader_llama",
+            "minecraft:pig",
             "minecraft:strider"
         ], // 包含其他类似坐骑
         animals: [
@@ -198,14 +233,14 @@ const DEFAULT_CONFIG = {
             "minecraft:ender_dragon", "minecraft:cave_spider", "minecraft:silverfish",
             "minecraft:endermite", "minecraft:evoker_fangs"
         ],
-        minecarts: [
+        minecarts: [ // 这个似乎重复了，保留上面的 itemTypes.minecart 和 entityTypes.minecarts
             "minecraft:minecart", "minecraft:chest_minecart", "minecraft:hopper_minecart",
             "minecraft:tnt_minecart", "minecraft:command_block_minecart"
         ],
         vehicles: [
             "minecraft:boat", "minecraft:chest_boat"
         ]
-    },    
+    },
     debug: true,
     toolSelector: {
         enabled: false,
@@ -231,7 +266,7 @@ const DEFAULT_CONFIG = {
         priceByVolume: true, // 是否按体积计算价格
         priceByDimension: { // 按维度设置价格倍率
             overworld: 1,
-            nether: 1.5, 
+            nether: 1.5,
             end: 2
         },
         minPrice: 100, // 最低价格
@@ -266,77 +301,141 @@ const DEFAULT_CONFIG = {
 
 };
 
-function mergeConfig(userConfig, defaultConfig) {
-    const result = { ...userConfig };
-    
-    for (const key in defaultConfig) {
-        // 如果用户配置中没有该键，直接使用默认值
-        if (!(key in result)) {
-            result[key] = defaultConfig[key];
+// --- Iterative Merge Function ---
+function mergeConfigIterative(target, source) {
+    const stack = [{ target, source }];
+    const mergedObjects = new Map(); // Track merged objects to handle potential cycles (though unlikely in JSON)
+
+    // Deep clone the initial target to avoid modifying the original userConfig directly during the process
+    const result = JSON.parse(JSON.stringify(target));
+    stack[0].target = result; // Update stack entry to point to the cloned target
+
+    while (stack.length > 0) {
+        const { target: currentTarget, source: currentSource } = stack.pop();
+
+        // Avoid re-processing the same object pair if encountered via cycles/duplicates
+        if (mergedObjects.has(currentTarget) && mergedObjects.get(currentTarget) === currentSource) {
             continue;
         }
-        
-        // 如果两者都是对象且不是数组，递归合并
-        if (
-            typeof defaultConfig[key] === 'object' && 
-            defaultConfig[key] !== null && 
-            !Array.isArray(defaultConfig[key]) &&
-            typeof result[key] === 'object' && 
-            result[key] !== null && 
-            !Array.isArray(result[key])
-        ) {
-            result[key] = mergeConfig(result[key], defaultConfig[key]);
+        mergedObjects.set(currentTarget, currentSource);
+
+
+        for (const key in currentSource) {
+            if (Object.prototype.hasOwnProperty.call(currentSource, key)) {
+                const sourceValue = currentSource[key];
+                const targetValue = currentTarget[key];
+
+                if (
+                    typeof sourceValue === 'object' &&
+                    sourceValue !== null &&
+                    !Array.isArray(sourceValue) &&
+                    typeof targetValue === 'object' && // Check if target also has an object for this key
+                    targetValue !== null &&
+                    !Array.isArray(targetValue)
+                ) {
+                    // If both are objects, push them onto the stack for later merging
+                    // Ensure the target object exists if it doesn't
+                     if (!(key in currentTarget)) {
+                         currentTarget[key] = {}; // Create object in target if missing
+                     }
+                    stack.push({ target: currentTarget[key], source: sourceValue });
+                } else if (!(key in currentTarget)) {
+                    // If the key doesn't exist in the target, add it from the source
+                    // Deep clone source value if it's an object/array to prevent shared references
+                     try {
+                        currentTarget[key] = JSON.parse(JSON.stringify(sourceValue));
+                     } catch (e) {
+                         logError(`Error cloning value for key "${key}": ${e.message}`);
+                         currentTarget[key] = sourceValue; // Fallback to shallow copy on error
+                     }
+                }
+                // If the key exists in the target and is not an object to be merged,
+                // the target's value is kept (user's value overrides default unless it's a structure mismatch handled above)
+            }
         }
-        // 否则保留用户配置
     }
-    
+
     return result;
 }
+
+
 // 加载配置
 function loadConfig() {
     const dir = './plugins/area';
     if (!File.exists(dir)) {
         File.mkdir(dir);
     }
-    
+
     if (!File.exists(CONFIG_PATH)) {
         // 如果配置不存在,创建默认配置
         saveConfig(DEFAULT_CONFIG);
-        logger.info("区域保护系统: 已创建默认配置文件");
+        logInfo("区域保护系统: 已创建默认配置文件");
         return DEFAULT_CONFIG;
     }
 
     try {
         const content = File.readFrom(CONFIG_PATH);
         let userConfig = JSON.parse(content);
-        
-        // 检查版本
-        if (userConfig.version !== CURRENT_VERSION) {
-            logger.info(`区域保护系统: 配置文件版本不匹配 (用户版本: ${userConfig.version || '未知'}, 当前版本: ${CURRENT_VERSION})`);
-            logger.info("区域保护系统: 正在更新配置文件...");
-            
-            // 合并配置
-            const updatedConfig = mergeConfig(userConfig, DEFAULT_CONFIG);
-            // 更新版本号
+
+        // 检查版本并合并更新
+        if (!userConfig.version || userConfig.version !== CURRENT_VERSION) {
+            logInfo(`区域保护系统: 配置文件版本不匹配或缺失 (用户版本: ${userConfig.version || '未知'}, 当前版本: ${CURRENT_VERSION})`);
+            logInfo("区域保护系统: 正在合并和更新配置文件...");
+
+            // 合并配置，保留用户设置，添加新默认值 (使用迭代版本)
+            const updatedConfig = mergeConfigIterative(userConfig, DEFAULT_CONFIG);
+            // 强制更新版本号
             updatedConfig.version = CURRENT_VERSION;
-            
+
             // 保存更新后的配置
             saveConfig(updatedConfig);
-            logger.info("区域保护系统: 配置文件已更新至最新版本");
-            
-            return updatedConfig;
+            logInfo("区域保护系统: 配置文件已更新至最新版本");
+
+            return updatedConfig; // 返回更新后的配置
+        } else {
+            // 版本匹配，仍然进行一次合并以确保所有默认键都存在（防止手动删除或结构变更） (使用迭代版本)
+            // 这次合并基于用户当前的配置 userConfig
+            const mergedConfig = mergeConfigIterative(userConfig, DEFAULT_CONFIG);
+
+            // 检查合并后的配置是否与原始用户配置不同 (使用迭代合并后的结果)
+            // 使用简单的比较可能不够，因为对象顺序可能变化，但对于补充缺失键是有效的
+            // 注意：深比较 JSON 字符串可能因键顺序不同而误判，但这里主要目的是捕捉是否补充了键
+            let configChanged = false;
+            try {
+                if (JSON.stringify(mergedConfig) !== JSON.stringify(userConfig)) {
+                    configChanged = true;
+                }
+            } catch (stringifyError) {
+                // 如果序列化失败（例如循环引用，虽然不太可能），也标记为已更改以尝试保存
+                logError(`序列化配置时出错: ${stringifyError.message}`);
+                configChanged = true; // 尝试保存修复后的版本
+            }
+
+
+            if (configChanged) {
+                 // logDebug("区域保护系统: 配置文件结构与默认值存在差异或缺少键，已合并/补充。正在保存..."); // 移除此处的 logDebug 调用
+                 logInfo("区域保护系统: 配置文件结构已与默认值合并/补充。正在保存..."); // 可以用 logInfo 替代，如果需要日志的话
+                 saveConfig(mergedConfig); // 保存合并后的版本
+            }
+
+            return mergedConfig; // 返回最终的、确保结构完整的配置
         }
-        
-        return userConfig;
+
     } catch (e) {
-        logger.error(`配置文件读取失败: ${e}`);
+        // 捕获加载、解析或合并过程中的任何错误
+        logError(`配置文件处理失败: ${e.message}`, e.stack);
         // 备份损坏的配置文件
         if (File.exists(CONFIG_PATH)) {
             const backupPath = `${CONFIG_PATH}.backup.${Date.now()}`;
-            File.copy(CONFIG_PATH, backupPath);
-            logger.info(`已将损坏的配置文件备份至: ${backupPath}`);
+            try {
+                File.copy(CONFIG_PATH, backupPath);
+                logInfo(`已将损坏的配置文件备份至: ${backupPath}`);
+            } catch (copyError) {
+                logError(`备份损坏的配置文件失败: ${copyError.message}`);
+            }
         }
-        // 使用默认配置
+        // 使用默认配置并保存
+        logInfo("区域保护系统: 使用默认配置。");
         saveConfig(DEFAULT_CONFIG);
         return DEFAULT_CONFIG;
     }
@@ -347,7 +446,7 @@ function saveConfig(config) {
     try {
         return File.writeTo(CONFIG_PATH, JSON.stringify(config, null, 2));
     } catch (e) {
-        logger.error(`配置文件保存失败: ${e}`);
+        logError(`配置文件保存失败: ${e.message}`, e.stack);
         return false;
     }
 }

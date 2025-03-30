@@ -1,6 +1,8 @@
 // utils.js
 const { logDebug, logInfo, logWarning, logError } = require('./logger');
-const { querySpatialIndex } = require('./spatialIndex'); // 引入空间索引查询函数
+
+// 引入空间索引查询和构建函数
+const { querySpatialIndex, buildSpatialIndex } = require('./spatialIndex');
 
 // 检查玩家是否在某个区域内
 function isInArea(pos, area) {
@@ -26,7 +28,7 @@ function isInArea(pos, area) {
  * @param {object} pos - 玩家位置 {x, y, z, dimid}
  * @param {object} areaData - 所有区域的数据 { areaId: areaObject, ... }
  * @param {object} spatialIndex - 构建好的空间索引
- * @returns {Array<{id: string, area: object, isSubarea: boolean, parentAreaId: string|null}>}
+ * @returns {Array<{id: string, area: object, isSubarea: boolean, parentAreaId: string|null, depth: number}>} 排序后的区域信息，包含深度
  */
 function getPriorityAreasAtPosition(pos, areaData, spatialIndex) {
     let areasAtPos = [];
@@ -34,36 +36,73 @@ function getPriorityAreasAtPosition(pos, areaData, spatialIndex) {
 
     logDebug(`位置 ${JSON.stringify(pos)} 的候选区域数: ${candidateAreaIds.length}`);
 
+    // 递归函数计算区域深度
+    const getAreaDepth = (areaId, currentDepth = 0, visited = new Set()) => {
+        // --- Debug Log ---
+        try { // Add try-catch for safety during debugging
+            logDebug(`[getAreaDepth] Checking areaId: ${areaId}, currentDepth: ${currentDepth}, visited: ${JSON.stringify(Array.from(visited))}`);
+        } catch(e) { logError(`Error logging getAreaDepth start: ${e.message}`); }
+        // --- End Debug Log ---
+
+        if (!areaData[areaId]) {
+             logWarning(`[getAreaDepth] Area ${areaId} not found in areaData.`);
+             return currentDepth; // Return current depth if area not found
+        }
+        if (visited.has(areaId)) {
+            logWarning(`[getAreaDepth] Circular reference detected for areaId: ${areaId}. Returning current depth ${currentDepth}.`);
+            return currentDepth; // Prevent infinite loops
+        }
+        visited.add(areaId); // 标记为已访问
+
+        const area = areaData[areaId];
+        // --- Debug Log ---
+        try { // Add try-catch for safety
+            logDebug(`[getAreaDepth] Area ${areaId} data: isSubarea=${area.isSubarea}, parentAreaId=${area.parentAreaId}`);
+        } catch(e) { logError(`Error logging getAreaDepth area data: ${e.message}`); }
+        // --- End Debug Log ---
+
+        if (!area.isSubarea || !area.parentAreaId) {
+            logDebug(`[getAreaDepth] Area ${areaId} is top-level or missing parent. Returning depth ${currentDepth}.`);
+            return currentDepth; // 到达顶层区域或数据不完整
+        }
+        // 递归查找父区域深度
+        logDebug(`[getAreaDepth] Area ${areaId} is subarea. Recursing for parent ${area.parentAreaId} with depth ${currentDepth + 1}.`);
+        return getAreaDepth(area.parentAreaId, currentDepth + 1, visited);
+    };
+
     // 只检查候选区域
     for (const areaId of candidateAreaIds) {
         const area = areaData[areaId];
-        // 确保区域数据存在，以防索引和实际数据短暂不同步（虽然理论上应该同步）
+        // 确保区域数据存在
         if (!area) {
             logWarning(`空间索引中的区域ID ${areaId} 在 areaData 中未找到，可能数据不同步`);
             continue;
         }
 
         if (isInArea(pos, area)) {
+            const depth = getAreaDepth(areaId); // 计算深度
             areasAtPos.push({
                 id: areaId,
                 area: area,
                 isSubarea: !!area.isSubarea,
-                parentAreaId: area.parentAreaId
+                parentAreaId: area.parentAreaId,
+                depth: depth // 添加深度信息
             });
         }
     }
 
-    // 按优先级排序：子区域优先于父区域
+    // 按优先级排序：深度越大的（越内层的子区域）优先级越高
     areasAtPos.sort((a, b) => {
-        // 可以根据 area.priority 字段进行更精细的排序（如果需要）
-        if (a.isSubarea && !b.isSubarea) return -1;
-        if (!a.isSubarea && b.isSubarea) return 1;
-        // 如果优先级相同（都是子区域或都不是），可以根据创建时间或其他标准排序
-        // return (b.area.priority || 0) - (a.area.priority || 0); // 假设有 priority 字段
-        return 0; // 保持原有简单排序
+        // 主要按深度降序排序
+        if (a.depth !== b.depth) {
+            return b.depth - a.depth;
+        }
+        // 如果深度相同，可以添加次要排序规则，例如按名称或创建时间
+        // 这里暂时不加次要排序
+        return 0;
     });
 
-    logDebug(`位置 ${JSON.stringify(pos)} 实际命中的区域数: ${areasAtPos.length}`);
+    logDebug(`位置 ${JSON.stringify(pos)} 实际命中的区域数: ${areasAtPos.length}, 排序后: ${areasAtPos.map(a => `${a.id}(${a.depth})`).join(', ')}`);
     return areasAtPos;
 }
 
@@ -132,29 +171,48 @@ function isAreaWithinArea(areaA, areaB) {
            a1MinZ >= a2MinZ && a1MaxZ <= a2MaxZ;
 }
 
-// 检查新区域是否与任何现有区域重叠
-function checkNewAreaOverlap(newArea, existingAreas) {
-    // 遍历所有现有区域
-    for(let areaId in existingAreas) {
-        const existingArea = existingAreas[areaId];
-        // 如果发现重叠,返回重叠的区域信息
-        if(checkAreasOverlap(newArea, existingArea)) {
+// 检查新区域是否与任何现有区域重叠 (优化版)
+// 需要传入 spatialIndex 和 areaData
+function checkNewAreaOverlap(newArea, spatialIndex, areaData) {
+    // 使用空间索引查询可能与 newArea 重叠的候选区域ID
+    // *** 注意: 这里假设 querySpatialIndex 可以处理区域对象或存在 querySpatialIndexForArea ***
+    // 如果 querySpatialIndex 只接受点，你可能需要修改空间索引或此处的逻辑
+    // 例如，查询 newArea 的几个角点和中心点来获取候选区域
+    const candidateAreaIds = querySpatialIndex(newArea, spatialIndex); // 假设 querySpatialIndex 能处理区域
+
+    logDebug(`检查新区域 ${newArea.name || '未命名'} 重叠：候选区域数 ${candidateAreaIds.length}`);
+
+    // 遍历候选区域
+    for (const areaId of candidateAreaIds) {
+        const existingArea = areaData[areaId];
+
+        // 确保区域存在且不是新区域自身（如果新区域已临时加入 areaData）
+        // 注意：调用者 (createSubArea) 应该已经排除了父区域
+        if (!existingArea || areaId === newArea.id /* if newArea has a temporary ID */) {
+            continue;
+        }
+
+        // 检查几何重叠
+        if (checkAreasOverlap(newArea, existingArea)) {
+            logDebug(`新区域与现有区域 ${areaId} (${existingArea.name}) 重叠`);
             return {
                 overlapped: true,
                 overlappingArea: {
                     id: areaId,
-                    name: existingArea.name
-                }
+                    name: existingArea.name,
+                },
             };
         }
     }
-    
+
     // 没有重叠返回false
+    logDebug(`新区域未发现重叠`);
     return {
         overlapped: false,
-        overlappingArea: null
+        overlappingArea: null,
     };
 }
+
 
 function checkAreaSizeLimits(point1, point2, config, isSubarea = false) {
     // 如果没有启用大小限制，直接返回有效
@@ -267,5 +325,88 @@ module.exports = {
     getHighestPriorityArea,
     checkAreaSizeLimits,
     countPlayerAreas,
-    matchesIdPattern
+    matchesIdPattern,
+    findNearestBoundaryPoint
 };
+
+
+/**
+ * 计算点 pos 到区域 area 边界最近的点，并稍微向外偏移
+ * @param {object} pos - 玩家当前位置 {x, y, z, dimid}
+ * @param {object} area - 区域对象 { point1: {x,y,z}, point2: {x,y,z}, dimid }
+ * @returns {object|null} 最近的边界点 {x, y, z, dimid} 或 null（如果维度不匹配）
+ */
+function findNearestBoundaryPoint(pos, area) {
+    if (pos.dimid !== area.dimid) {
+        logWarning(`findNearestBoundaryPoint: Position and area dimensions do not match (${pos.dimid} vs ${area.dimid})`);
+        return null;
+    }
+
+    const minX = Math.min(area.point1.x, area.point2.x);
+    const maxX = Math.max(area.point1.x, area.point2.x);
+    const minY = Math.min(area.point1.y, area.point2.y);
+    const maxY = Math.max(area.point1.y, area.point2.y);
+    const minZ = Math.min(area.point1.z, area.point2.z);
+    const maxZ = Math.max(area.point1.z, area.point2.z);
+
+    // 1. 计算玩家到每个边界的距离 (使用原始 pos)
+    // 正值表示在边界内侧多远，负值表示在外侧多远
+    const distToMinX = pos.x - minX;
+    const distToMaxX = maxX - pos.x;
+    const distToMinY = pos.y - minY;
+    const distToMaxY = maxY - pos.y;
+    const distToMinZ = pos.z - minZ;
+    const distToMaxZ = maxZ - pos.z;
+
+    // 2. 找到绝对值最小的距离，确定最近的边界平面
+    let minDistAbs = Infinity;
+    let nearestFace = null;
+
+    if (Math.abs(distToMinX) < minDistAbs) { minDistAbs = Math.abs(distToMinX); nearestFace = 'minX'; }
+    if (Math.abs(distToMaxX) < minDistAbs) { minDistAbs = Math.abs(distToMaxX); nearestFace = 'maxX'; }
+    // Y 轴通常不作为主要传送目标，除非玩家正好在顶部或底部边界外
+    if (Math.abs(distToMinY) < minDistAbs) { minDistAbs = Math.abs(distToMinY); nearestFace = 'minY'; }
+    if (Math.abs(distToMaxY) < minDistAbs) { minDistAbs = Math.abs(distToMaxY); nearestFace = 'maxY'; }
+    if (Math.abs(distToMinZ) < minDistAbs) { minDistAbs = Math.abs(distToMinZ); nearestFace = 'minZ'; }
+    if (Math.abs(distToMaxZ) < minDistAbs) { minDistAbs = Math.abs(distToMaxZ); nearestFace = 'maxZ'; }
+
+    // 3. 计算目标传送点
+    const offset = 0.5; // 传送到边界外一点点
+    let targetX = pos.x;
+    let targetY = pos.y;
+    let targetZ = pos.z;
+
+    // 将坐标限制在区域的 XZ 平面上，Y 坐标保持玩家当前高度（或略高于地面）
+    targetX = Math.max(minX, Math.min(targetX, maxX));
+    targetZ = Math.max(minZ, Math.min(targetZ, maxZ));
+    // Y 坐标需要小心处理，避免卡墙或掉虚空。
+    // 暂时保持玩家 Y 坐标，或者设置为 minY + 1?
+    // 保持玩家 Y 坐标可能更安全，除非 Y 是最近的面。
+    // targetY = Math.max(minY, Math.min(targetY, maxY)); // 限制 Y
+
+    switch (nearestFace) {
+        case 'minX': targetX = minX - offset; break;
+        case 'maxX': targetX = maxX + offset; break;
+        case 'minY': targetY = minY - offset; break; // 传送到下方可能不好，改为 minY?
+        case 'maxY': targetY = maxY + offset; break; // 传送到上方通常安全
+        case 'minZ': targetZ = minZ - offset; break;
+        case 'maxZ': targetZ = maxZ + offset; break;
+    }
+
+    // 再次确保坐标在合理范围内，特别是 Y
+    // 如果最近的面是 minY，传送到 minY 可能比 minY - offset 好
+    if (nearestFace === 'minY') {
+        targetY = minY; // 传送到地面上
+    }
+    // 确保 X/Z 不会因为偏移而进入另一个不该进入的区域？这比较复杂。
+    // 简单起见，先这样。
+
+    logDebug(`Nearest boundary point calculated for pos ${JSON.stringify(pos)} in area [${minX}-${maxX}, ${minY}-${maxY}, ${minZ}-${maxZ}]: face=${nearestFace}, point=(${targetX.toFixed(1)}, ${targetY.toFixed(1)}, ${targetZ.toFixed(1)})`);
+
+    return {
+        x: targetX,
+        y: targetY,
+        z: targetZ,
+        dimid: area.dimid
+    };
+}

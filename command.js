@@ -2,8 +2,9 @@
 // command.js
 const { showMainForm } = require('./mainForm');
 const { getPlayerData, setPlayerData } = require('./playerDataManager');
-const {logDebug, logInfo, logWarning, logError } = require('./logger');
-const {showAreaVisualization, clearAreaVisualization } = require('./bsci');
+const { logDebug, logInfo, logWarning, logError } = require('./logger');
+// 导入新的 bsci 函数
+const { showSelectionVisualization, clearAreaVisualization } = require('./bsci');
 function registerCommands(areaData, showCreateAreaForm, saveAreaData) {
     const cmd = mc.newCommand("area", "区域管理命令", PermType.Any);
     cmd.setAlias("ar");
@@ -97,10 +98,14 @@ function handlePos1(pl, out) {
         }
     });
     const playerData = getPlayerData()[pl.uuid];
-    if (playerData && playerData.pos2 && playerData.pos1.dimid === playerData.pos2.dimid) {
-        showAreaVisualization(pl, playerData.pos1, playerData.pos2);
+    // 检查两个点是否存在且在同一维度，然后调用新的选点可视化函数
+    if (playerData && playerData.pos1 && playerData.pos2 && playerData.pos1.dimid === playerData.pos2.dimid) {
+        showSelectionVisualization(pl, playerData.pos1, playerData.pos2);
+    } else if (playerData && playerData.pos1) {
+        // 如果只设置了点1，可以考虑只显示一个点或不显示
+        // clearAreaVisualization(pl); // 清除旧的可视化（如果需要）
     }
-    return out.success(`§a已设置点1: x:${pos1.x} y:${pos1.y} z:${pos1.z} 维度:${pos1.dimid}`);
+    return out.success(`§a已设置点1: x:${Math.floor(pos1.x)} y:${Math.floor(pos1.y)} z:${Math.floor(pos1.z)} 维度:${pos1.dimid}`);
 }
 
 function handlePos2(pl, out) {
@@ -114,10 +119,14 @@ function handlePos2(pl, out) {
         }
     });
     const playerData = getPlayerData()[pl.uuid];
-    if (playerData && playerData.pos1 && playerData.pos1.dimid === playerData.pos2.dimid) {
-        showAreaVisualization(pl, playerData.pos1, playerData.pos2);
+    // 检查两个点是否存在且在同一维度，然后调用新的选点可视化函数
+    if (playerData && playerData.pos1 && playerData.pos2 && playerData.pos1.dimid === playerData.pos2.dimid) {
+        showSelectionVisualization(pl, playerData.pos1, playerData.pos2);
+    } else if (playerData && playerData.pos2) {
+        // 如果只设置了点2，可以考虑只显示一个点或不显示
+        // clearAreaVisualization(pl); // 清除旧的可视化（如果需要）
     }
-    return out.success(`§a已设置点2: x:${pos2.x} y:${pos2.y} z:${pos2.z} 维度:${pos2.dimid}`);
+    return out.success(`§a已设置点2: x:${Math.floor(pos2.x)} y:${Math.floor(pos2.y)} z:${Math.floor(pos2.z)} 维度:${pos2.dimid}`);
 }
 
 function handleCreate(pl, areaData, out, showCreateAreaForm, saveAreaData) {

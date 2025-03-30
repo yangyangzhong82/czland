@@ -229,6 +229,12 @@ const DEFAULT_PERMISSIONS = {
         description: "允许在区域内使用弓",
         category: "物品"
     },
+    USE_BUCKET: {
+        id: "useBucket",
+        name: "使用桶",
+        description: "允许在区域内使用桶",
+        category: "物品"
+    },
     USE_CROSSBOW: {
         id: "useCrossbow",
         name: "使用弩",
@@ -505,6 +511,12 @@ const DEFAULT_PERMISSIONS = {
         description: "允许更改区域的边界",
         category: "管理"
     },
+    ENTER_AREA: {
+        id: "enterArea",
+        name: "进入区域",
+        description: "允许玩家进入此区域",
+        category: "移动" // 新增一个移动分类或者放在交互分类
+    },
     SET_AREA_RULES: {
         id: "setAreaRules",
         name: "设置区域规则",
@@ -529,6 +541,18 @@ const DEFAULT_PERMISSIONS = {
         description: "允许修改子区域的设置",
         category: "管理"
     }
+};
+
+// 确保 "移动" 分类存在，如果上面选择了 "移动"
+const ensureCategoriesExist = (permissions) => {
+    const categories = new Set();
+    Object.values(permissions).forEach(p => {
+        if (p && p.category) {
+            categories.add(p.category);
+        }
+    });
+    // 如果需要，可以在这里添加默认分类，但通常由权限定义驱动
+    // console.log("Detected categories:", [...categories]);
 };
 
 // 加载权限定义
@@ -567,9 +591,78 @@ function loadPermissions() {
         }
 
         // 尝试解析 JSON
-        const permissions = JSON.parse(content);
+        let loadedPermissions = JSON.parse(content);
         logInfo("权限定义已从 permissions.json 加载。");
-        return permissions;
+
+        // --- 开始自动更新逻辑 ---
+        let updated = false;
+        const defaultKeys = Object.keys(DEFAULT_PERMISSIONS);
+        const loadedKeys = Object.keys(loadedPermissions);
+
+        // 检查并添加缺失的权限
+        for (const key of defaultKeys) {
+            if (!loadedPermissions[key]) {
+                logInfo(`发现缺失的权限定义: ${key}，将从默认值添加。`);
+                loadedPermissions[key] = DEFAULT_PERMISSIONS[key];
+                updated = true;
+            }
+            /*
+            // 可选：检查现有权限的结构是否完整，例如是否缺少 name, description, category
+            else if (DEFAULT_PERMISSIONS[key]) {
+                const defaultPerm = DEFAULT_PERMISSIONS[key];
+                const loadedPerm = loadedPermissions[key];
+                let needsUpdate = false;
+                if (loadedPerm.name !== defaultPerm.name) {
+                    logDebug(`权限 ${key} 的 name 与默认值不同，将更新。`);
+                    loadedPerm.name = defaultPerm.name;
+                    needsUpdate = true;
+                }
+                if (loadedPerm.description !== defaultPerm.description) {
+                    logDebug(`权限 ${key} 的 description 与默认值不同，将更新。`);
+                    loadedPerm.description = defaultPerm.description;
+                    needsUpdate = true;
+                }
+                if (loadedPerm.category !== defaultPerm.category) {
+                    logDebug(`权限 ${key} 的 category 与默认值不同，将更新。`);
+                    loadedPerm.category = defaultPerm.category;
+                    needsUpdate = true;
+                }
+                 if (loadedPerm.id !== defaultPerm.id) { // 确保 ID 也一致
+                    logDebug(`权限 ${key} 的 id 与默认值不同，将更新。`);
+                    loadedPerm.id = defaultPerm.id;
+                    needsUpdate = true;
+                }
+                if (needsUpdate) {
+                    updated = true;
+                }
+            }*/
+        }
+
+        // 检查并移除不再使用的权限 (可选，如果需要清理)
+        /*
+        for (const key of loadedKeys) {
+            if (!DEFAULT_PERMISSIONS[key]) {
+                logInfo(`发现不再使用的权限定义: ${key}，将从配置文件中移除。`);
+                delete loadedPermissions[key];
+                updated = true;
+            }
+        }
+        */
+
+        // 如果进行了更新，则写回文件
+        if (updated) {
+            logInfo("权限配置文件已更新，正在保存...");
+            try {
+                File.writeTo(PERMISSIONS_PATH, JSON.stringify(loadedPermissions, null, 2));
+                logInfo(`权限配置文件已更新并保存: ${PERMISSIONS_PATH}`);
+            } catch (writeError) {
+                logError(`更新权限配置文件失败: ${writeError}`);
+                // 即使写回失败，也返回合并后的内存版本
+            }
+        }
+        // --- 结束自动更新逻辑 ---
+
+        return loadedPermissions; // 返回可能已更新的权限对象
 
     } catch (e) {
         logError(`加载或解析权限配置文件失败: ${e}`);
@@ -590,7 +683,17 @@ function loadPermissions() {
 }
 
 // 初始化时加载权限
-const PERMISSIONS = loadPermissions();
+let PERMISSIONS = loadPermissions();
+ensureCategoriesExist(PERMISSIONS); // 调用检查函数
+
+// 重新加载权限的函数（如果需要热重载）
+function reloadPermissions() {
+    PERMISSIONS = loadPermissions();
+    ensureCategoriesExist(PERMISSIONS);
+    logInfo("权限定义已重新加载。");
+    return PERMISSIONS;
+}
+
 
 // 将权限按类别分组
 function getPermissionsByCategory() {
@@ -644,5 +747,6 @@ module.exports = {
     getPermissionsByCategory,
     getAllPermissionIds,
     getAllCategories,
-    loadPermissions // 导出加载函数，以便可能的热重载
+    loadPermissions, // 导出加载函数
+    reloadPermissions // 导出重载函数
 };

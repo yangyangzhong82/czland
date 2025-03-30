@@ -2,7 +2,7 @@ const { loadPermissionData, savePermissionData } = require('./permissionData');
 const { PERMISSIONS, getAllPermissionIds } = require('./permissionRegistry');
 // 默认权限组配置的保存路径
 const DEFAULT_GROUP_CONFIG_PATH = './plugins/area/defaultGroups.json';
-const { loadConfig } = require('./configManager');
+const { loadConfig, saveConfig } = require('./configManager'); // 导入 saveConfig
 const { getDbSession } = require('./database');
 const {logDebug, logInfo, logWarning, logError } = require('./logger');
 const { loadCustomGroups } = require('./customGroups'); // 确保引入 loadCustomGroups
@@ -538,8 +538,8 @@ function getPlayerPermission(playerUuid, areaId) {
     */
 }
 
-// 获取所有可用的权限组
-function getPlayerAllPermissions(playerUuid) {
+// 获取玩家的所有权限数据 (使用 UUID)
+function getPlayerAllPermissions(playerUuid) { // Renamed parameter for clarity, kept this version
     // Validation
     if (typeof playerUuid !== 'string' || !playerUuid) {
          logger.warn(`获取玩家所有权限失败：无效 UUID: ${playerUuid}`);
@@ -567,12 +567,12 @@ function getPlayerAllPermissions(playerUuid) {
     } finally {
          // Finalize/reset stmt if needed
     }
-   // return permissionData[playerXuid] || {}; // Old cache logic
+   // return permissionData[playerUuid] || {}; // Old cache logic - Removed duplicate function below
 }
-// 获取玩家的所有权限数据
-function getPlayerAllPermissions(playerXuid) {
-    return permissionData[playerXuid] || {};
-}
+// // 获取玩家的所有权限数据 (旧的，基于 XUID 和内存变量，已移除)
+// function getPlayerAllPermissions(playerXuid) {
+//     return permissionData[playerXuid] || {};
+// }
 
 // 删除区域时清理相关权限数据
 function cleanAreaPermissions(areaId) {

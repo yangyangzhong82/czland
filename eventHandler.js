@@ -1,4 +1,4 @@
-const { isInArea, getPriorityAreasAtPosition, checkAreasOverlap, matchesIdPattern } = require('./utils');
+const { isInArea, getPriorityAreasAtPosition, checkAreasOverlap, matchesIdPattern, findNearestBoundaryPoint } = require('./utils'); // 引入 findNearestBoundaryPoint
 const { getAreaData, getSpatialIndex } = require('./czareaprotection');
 const { worldToChunkCoords } = require('./spatialIndex');
 const { checkPermission } = require('./permission');
@@ -8,8 +8,7 @@ const config = loadConfig(); // Load initial config, but reload in handlers if n
 const iListenAttentively = require('../iListenAttentively-LseExport/lib/iListenAttentively.js');
 const { logDebug, logInfo, logWarning, logError } = require('./logger');
 require('./ruleHandler'); // 引入规则处理器
-
-// --- 辅助函数 ---
+const playerPositionHistory = {};
 
 /**
  * 检查玩家在指定位置是否有特定权限，使用空间索引优化
@@ -180,6 +179,7 @@ const getItemUsePermissionMap = () => {
         { types: currentConfig.itemTypes?.lingeringPotion, permission: PERMISSIONS.USE_LINGERING_POTION, message: "§c你没有权限在此区域使用滞留药水！" },
         { types: currentConfig.itemTypes?.expBottle, permission: PERMISSIONS.USE_EXP_BOTTLE, message: "§c你没有权限在此区域使用附魔之瓶！" },
         { types: currentConfig.itemTypes?.fishingRod, permission: PERMISSIONS.USE_FISHING_ROD, message: "§c你没有权限在此区域使用钓鱼竿！" },
+        { types: currentConfig.itemTypes?.bucket, permission: PERMISSIONS.USE_BUCKET, message: "§c你没有权限在此区域使用桶！" },
     ];
 };
 
@@ -440,13 +440,12 @@ mc.listen("onUseItemOn", (player, item, block, side, pos) => {
     }
     logDebug(`玩家 ${player.name} 尝试对方块 ${block.type} 使用物品 ${item.type} at (${blockPos.x}, ${blockPos.y}, ${blockPos.z})`);
 
-    // --- 新增：检查放置矿车 ---
+    //检查放置矿车
     if (currentConfig.itemTypes?.minecarts && matchesIdPattern(item.type, currentConfig.itemTypes.minecarts) &&
         currentConfig.blockTypes?.rails && matchesIdPattern(block.type, currentConfig.blockTypes.rails)) {
         logDebug(`检测到放置矿车，检查权限 ${PERMISSIONS.PLACE_MINECART.id}`);
         return handlePermissionCheck(player, blockPos, PERMISSIONS.PLACE_MINECART.id, "放置矿车", "§c你没有权限在此区域放置矿车！");
     }
-    // --- 结束：检查放置矿车 ---
 
 
     // 检查特殊交互 (物品+方块 或 仅方块) - 原有逻辑
@@ -540,5 +539,212 @@ mc.listen("onUseFrameBlock", (player, block) => {
     // 操作展示框通常不提示失败
     return handlePermissionCheck(player, block.pos, PERMISSIONS.ITEM_FRAME.id, "操作展示框");
 });
+
+iListenAttentively.emplaceListener(
+    "ila::mc::world::actor::player::PlayerEditSignBeforeEvent",
+    event => {
+        const player = iListenAttentively.getPlayer(event["self"]); // 使用 getPlayer 获取 Player 对象
+        if (!player) {
+            logWarning("PlayerEditSignBeforeEvent: 无法获取玩家对象");
+            event["cancelled"] = true; // 获取不到玩家则阻止
+            return;
+        }
+
+        const signPosArray = event["pos"];
+        if (!signPosArray || signPosArray.length < 3) {
+            logWarning(`PlayerEditSignBeforeEvent: 无效的告示牌位置 for player ${player.name}`);
+            event["cancelled"] = true; // 位置无效则阻止
+            return;
+        }
+
+        // 构建位置对象，使用玩家当前的维度ID（假设编辑时玩家和告示牌在同一维度）
+        const pos = {
+            x: signPosArray[0],
+            y: signPosArray[1],
+            z: signPosArray[2],
+            dimid: player.pos.dimid // 使用玩家维度
+        };
+
+        logDebug(`玩家 ${player.name} 尝试编辑告示牌 at (${pos.x}, ${pos.y}, ${pos.z})`);
+
+        // 调用权限检查函数
+        const hasPermission = handlePermissionCheck(
+            player,
+            pos,
+            PERMISSIONS.USE_SIGN.id, // 使用 USE_SIGN 权限
+            "编辑告示牌",
+            "§c你没有权限在此区域编辑告示牌！" // 权限不足提示
+        );
+
+        if (!hasPermission) {
+            logDebug(`玩家 ${player.name} 编辑告示牌权限不足，操作被阻止`);
+            event["cancelled"] = true; // 权限不足，拦截事件
+        } else {
+            logDebug(`玩家 ${player.name} 允许编辑告示牌`);
+            // 权限足够，不需要设置 event["cancelled"] = false，默认不拦截
+        }
+    },
+    iListenAttentively.EventPriority.High // 保持高优先级以确保先执行权限检查
+);
+
+/**
+ * 跟踪玩家位置并处理区域进入权限
+ * @param {Player} player - 要检查的玩家
+ */
+function handlePlayerMovement(player) {
+    const currentPos = player.pos;
+    if (!currentPos || currentPos.x === undefined || currentPos.y === undefined || currentPos.z === undefined || currentPos.dimid === undefined) {
+        logDebug(`玩家 ${player.name} 位置无效或不完整，跳过移动检查`);
+        return; // 增加更严格的位置有效性检查
+    }
+
+    const areaData = getAreaData();
+    const spatialIndex = getSpatialIndex();
+
+    const playerUUID = player.uuid; // 缓存UUID
+
+    // 如果玩家之前没有记录位置或初次进入，将位置存储在历史记录中
+    if (!playerPositionHistory[playerUUID] || playerPositionHistory[playerUUID].length === 0) {
+        logDebug(`首次跟踪玩家 ${player.name} 位置`);
+        updatePositionHistory(playerUUID, currentPos); // 初始化时也更新历史
+        return; // 首次位置跟踪，允许
+    }
+
+    const areasAtCurrentPos = getPriorityAreasAtPosition(currentPos, areaData, spatialIndex);
+    const currentPriorityArea = areasAtCurrentPos.length > 0 ? areasAtCurrentPos[0] : null;
+    const currentPriorityAreaId = currentPriorityArea ? currentPriorityArea.id : null;
+
+    // 获取之前的位置
+    const prevPositions = playerPositionHistory[playerUUID];
+    // 确保 prevPositions 和最后一个元素存在
+    const prevPos = prevPositions.length > 0 ? prevPositions[prevPositions.length - 1] : null;
+
+    if (!prevPos) {
+        logWarning(`玩家 ${player.name} 缺少先前位置历史，无法检查区域进入`);
+        updatePositionHistory(playerUUID, currentPos); // 记录当前位置以备下次使用
+        return;
+    }
+
+    // 获取先前位置的最高优先级区域
+    const prevAreasAtPos = getPriorityAreasAtPosition(prevPos, areaData, spatialIndex);
+    const prevPriorityArea = prevAreasAtPos.length > 0 ? prevAreasAtPos[0] : null;
+    const prevPriorityAreaId = prevPriorityArea ? prevPriorityArea.id : null;
+
+    // 核心逻辑：检查最高优先级区域是否发生变化
+    if (currentPriorityAreaId !== prevPriorityAreaId) {
+        // 最高优先级区域已改变 (进入新区域或离开区域)
+
+        if (currentPriorityArea) {
+            // 进入了一个新的最高优先级区域
+            logDebug(`玩家 ${player.name} 尝试进入新的最高优先级区域 ${currentPriorityArea.area.name} (ID: ${currentPriorityAreaId})，先前区域ID: ${prevPriorityAreaId}`);
+
+            // 检查进入权限
+            if (!checkPriorityPermission(player, currentPos, PERMISSIONS.ENTER_AREA.id, areaData, spatialIndex)) {
+                // 权限被拒绝 - 传送回最后的有效位置
+                const safePos = getSafePosition(playerUUID);
+                if (safePos) {
+                    logInfo(`玩家 ${player.name} 没有权限进入区域 ${currentPriorityArea.area.name}，传送回 (${safePos.x.toFixed(1)}, ${safePos.y.toFixed(1)}, ${safePos.z.toFixed(1)})`);
+                    player.tell("§c你没有权限进入此区域！");
+
+                    // 尝试传送
+                    const success = player.teleport(safePos.x, safePos.y, safePos.z, safePos.dimid);
+                    if (!success) {
+                        logWarning(`传送玩家 ${player.name} 到安全位置失败！`);
+                    }
+
+                    return;
+                } else {
+                    logWarning(`玩家 ${player.name} 没有进入区域 ${currentPriorityArea.area.name} 的权限，但找不到安全传送位置！`);
+                    // 无法传送，但仍阻止其进入逻辑（不更新历史到新位置）
+                    // 尝试传送到区域边界外
+                    logWarning(`玩家 ${player.name} 没有进入区域 ${currentPriorityArea.area.name} 的权限，且找不到历史安全位置。尝试传送到区域边界外...`);
+                    const boundaryPos = findNearestBoundaryPoint(currentPos, currentPriorityArea.area);
+                    if (boundaryPos) {
+                        logInfo(`将玩家 ${player.name} 传送到区域 ${currentPriorityArea.area.name} 的最近边界点 (${boundaryPos.x.toFixed(1)}, ${boundaryPos.y.toFixed(1)}, ${boundaryPos.z.toFixed(1)})`);
+                        const successBoundary = player.teleport(boundaryPos.x, boundaryPos.y, boundaryPos.z, boundaryPos.dimid);
+                        if (!successBoundary) {
+                            logError(`传送玩家 ${player.name} 到边界位置失败！`);
+                        }
+                    } else {
+                        logError(`无法计算玩家 ${player.name} 到区域 ${currentPriorityArea.area.name} 的边界传送点！玩家可能被卡住。`);
+                    }
+                    return; // 无论传送是否成功，都阻止进入并返回
+                }
+            } else {
+                logDebug(`玩家 ${player.name} 权限检查通过，允许进入区域 ${currentPriorityArea.area.name}`);
+                // 权限允许，继续执行下面的历史更新
+            }
+        } else {
+            // 离开了所有区域 (currentPriorityAreaId is null, prevPriorityAreaId was not)
+            logDebug(`玩家 ${player.name} 已离开区域 ${prevPriorityArea.area.name} (ID: ${prevPriorityAreaId}) 进入野外`);
+            // 无需权限检查，继续执行下面的历史更新
+        }
+    } else {
+         // logDebug(`玩家 ${player.name} 仍在同一最高优先级区域 ${currentPriorityAreaId ? currentPriorityArea.area.name : '野外'}`);
+         // 仍在同一区域或都在区域外，无需特殊处理，只需更新历史
+    }
+
+    // 权限允许 或 仍在同一区域 或 离开区域进入野外 -> 更新位置历史
+    updatePositionHistory(playerUUID, currentPos);
+}
+
+/**
+ * 更新玩家的位置历史
+ * @param {string} uuid - 玩家uuid
+ * @param {object} pos - 要添加到历史的位置
+ */
+function updatePositionHistory(uuid, pos) {
+    // 复制位置对象以避免引用问题
+    const posCopy = {
+        x: pos.x,
+        y: pos.y,
+        z: pos.z,
+        dimid: pos.dimid
+    };
+    
+    // 如果需要则初始化
+    if (!playerPositionHistory[uuid]) {
+        playerPositionHistory[uuid] = [];
+    }
+    
+    // 添加新位置
+    playerPositionHistory[uuid].push(posCopy);
+    
+    // 只保留最后5个位置以避免内存膨胀
+    if (playerPositionHistory[uuid].length > 5) {
+        playerPositionHistory[uuid].shift();
+    }
+}
+
+/**
+ * 从玩家历史中获取安全位置
+ * @param {string} uuid - 玩家uuid
+ * @returns {object|null} 安全位置或如果没有找到则为null
+ */
+function getSafePosition(uuid) {
+    if (!playerPositionHistory[uuid] || playerPositionHistory[uuid].length < 2) {
+        return null; // 还没有历史记录
+    }
+    
+    // 获取之前的安全位置(倒数第二个位置)
+    // 这通常在受限区域之外
+    return playerPositionHistory[uuid][playerPositionHistory[uuid].length - 2];
+}
+
+// 在玩家断开连接时添加数据清理
+mc.listen("onLeft", (player) => {
+    // 只清理本文件管理的 playerPositionHistory
+    delete playerPositionHistory[player.uuid];
+    logDebug(`Cleared position history for player ${player.name} (UUID: ${player.uuid}) on leave.`);
+});
+
+
+// 设置定时器定期检查玩家位置
+setInterval(() => {
+    const players = mc.getOnlinePlayers();
+    players.forEach(player => {
+        handlePlayerMovement(player);
+    });
+}, 500); // 比区域显示更频繁地检查，例如每500毫秒
 
 // mc.listen("onBlockInteracted", ...) // 这个事件似乎与 onUseItemOn 重复，暂时注释掉
