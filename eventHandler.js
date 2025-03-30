@@ -587,6 +587,8 @@ iListenAttentively.emplaceListener(
     iListenAttentively.EventPriority.High // 保持高优先级以确保先执行权限检查
 );
 
+
+
 /**
  * 跟踪玩家位置并处理区域进入权限
  * @param {Player} player - 要检查的玩家

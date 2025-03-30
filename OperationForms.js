@@ -1,10 +1,12 @@
 const { loadAreaData, saveAreaData } = require('./config');
 const { getAreaData, updateAreaData } = require('./czareaprotection'); // Added updateAreaData
-const { isInArea, isAreaWithinArea, checkNewAreaOverlap, checkAreaSizeLimits } = require('./utils'); // Added utils functions
+// Import necessary functions from utils, including checkOverlapWithRestrictedZones
+const { isInArea, isAreaWithinArea, checkNewAreaOverlap, checkAreaSizeLimits, getAreaDepth, calculateAreaVolume, checkPlayerAreaLimits, calculatePlayerAreaStats, checkOverlapWithRestrictedZones } = require('./utils');
 const getOfflinePlayerData = ll.import("PlayerData", "getOfflinePlayerData");
 const { getPlayerCustomGroups, createCustomGroup, editCustomGroup, deleteCustomGroup, getAllCustomGroups } = require('./customGroups'); // Ensure getAllCustomGroups is imported if needed elsewhere, though getAvailableGroups uses it internally
 const { checkPermission, setPlayerPermission, getPlayerPermission, getAvailableGroups, getAreaDefaultGroup, setAreaDefaultGroup, resetCache } = require('./permission'); // Removed DEFAULT_GROUPS import, Added resetCache
 const { getPlayerData } = require('./playerDataManager');
+const { isAreaAdmin } = require('./areaAdmin'); // Import isAreaAdmin
 const { calculateAreaPrice, handleAreaPurchase, handleAreaRefund, getPlayerBalance, reducePlayerBalance, addPlayerBalance } = require('./economy'); // Added economy functions
 // LiteLoader-AIDS automatic generated
 /// <reference path="d:\mc\插件/dts/HelperLib-master/src/index.d.ts"/>
@@ -104,14 +106,63 @@ function confirmResizeArea(player, areaId, origin) {
         showAreaOperateForm(player, areaId, origin); // 返回时传递 origin
         return;
     }
-    const config = loadConfig();
-    const sizeCheck = checkAreaSizeLimits(point1, point2, config, area.isSubarea);
+
+    // --- 新增：检查新范围是否与禁止区域重叠 ---
+    const config = loadConfig(); // 加载配置以获取 restrictedZones
+    const restrictedZoneCheck = checkOverlapWithRestrictedZones(
+        newAreaTemp, // 使用上面创建的临时新区域对象
+        config.restrictedZones || []
+    );
+    if (restrictedZoneCheck.overlapped) {
+        player.tell(`§c无法调整区域范围：新范围与禁止区域 "${restrictedZoneCheck.overlappingZone.name || '未命名'}" 重叠！`);
+        showAreaOperateForm(player, areaId, origin); // 返回
+        return;
+    }
+    // --- 禁止区域检查结束 ---
+
+    // --- 检查单个区域尺寸限制 (包含深度) ---
+    // const config = loadConfig(); // 已在前面加载
+    const areaDepth = getAreaDepth(areaId, areaData); // 计算区域深度
+    const sizeCheck = checkAreaSizeLimits(point1, point2, config, area.isSubarea, areaDepth); // 传入深度
 
     if (!sizeCheck.valid) {
         player.tell(`§c无法调整区域范围: ${sizeCheck.message}`);
         showAreaOperateForm(player, areaId, origin); // 返回时传递 origin
         return;
     }
+    // --- 单个区域尺寸检查结束 ---
+
+    // --- 检查玩家总体积限制 (如果玩家是所有者且非管理员) ---
+    if (!isAreaAdmin(player.uuid) && area.xuid === player.xuid) {
+        const oldVolume = calculateAreaVolume(area.point1, area.point2);
+        const newVolume = calculateAreaVolume(point1, point2);
+        const volumeDifference = newVolume - oldVolume;
+
+        // 如果体积增加了，才需要检查是否超出限制
+        if (volumeDifference > 0) {
+            const limitsConfig = config.playerAreaLimits;
+            if (limitsConfig && limitsConfig.enabled) {
+                const playerStats = calculatePlayerAreaStats(player.xuid, areaData);
+
+                let limitKey;
+                if (areaDepth === 0) limitKey = 'main';
+                else if (areaDepth === 1) limitKey = 'subarea';
+                else if (areaDepth === 2) limitKey = 'subareaLevel2';
+                else limitKey = 'subareaLevel3';
+
+                const limits = limitsConfig[limitKey];
+                const currentStats = playerStats[limitKey];
+
+                if (limits && limits.maxTotalVolume !== -1 && (currentStats.totalVolume + volumeDifference) > limits.maxTotalVolume) {
+                    player.tell(`§c无法调整区域范围: 新的总体积 (${currentStats.totalVolume + volumeDifference}) 将超过你的 ${limitKey} 类区域总体积上限 (${limits.maxTotalVolume})`);
+                    showAreaOperateForm(player, areaId, origin); // 返回
+                    return;
+                }
+            }
+        }
+    }
+    // --- 玩家总体积检查结束 ---
+
 
     let originalPrice = 0;
     let newPrice = 0;
@@ -701,6 +752,7 @@ function showAreaRulesForm(player, areaId, origin) {
         allowEndermanPlaceBlock: false,
         allowExplosionDamageBlock: false,
         allowFarmlandDecay: false,
+        allowDragonEggTeleport: false, // 新增：允许龙蛋传送
         displayTitle: true,
         displayActionBar: true,
         mobSpawnExceptions: [], // Ensure array exists
@@ -743,6 +795,7 @@ function showAreaRulesForm(player, areaId, origin) {
         allowEndermanPlaceBlock: "允许末影人放置方块",
         allowExplosionDamageBlock: "允许爆炸破坏区域内方块",
         allowFarmlandDecay: "允许耕地被踩踏破坏",
+        allowDragonEggTeleport: "允许龙蛋传送", // 新增：龙蛋传送标签
         displayTitle: "§b允许显示进入区域标题",
         displayActionBar: "§b允许在物品栏上方显示区域信息",
     };

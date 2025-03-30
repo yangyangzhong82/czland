@@ -11,20 +11,20 @@ function initLogger(config) {
 function logDebug(message) {
     // 只检查模块级别的标志
     if (isDebugEnabled) {
-        logger.info(`[czland] [DEBUG] ${message}`); // 使用 logger.info 打印调试信息，或根据需要调整级别
+        logger.info(` [DEBUG] ${message}`); // 使用 logger.info 打印调试信息，或根据需要调整级别
     }
 }
 
 function logInfo(message) {
-    logger.info(`[czland] ${message}`);
+    logger.info(` ${message}`);
 }
 
 function logWarning(message) {
-    logger.warn(`[czland] ${message}`);
+    logger.warn(` ${message}`);
 }
 
 function logError(message, stack = null) { // 允许传入堆栈信息
-    let logMessage = `[czland] [ERROR] ${message}`;
+    let logMessage = ` [ERROR] ${message}`;
     if (stack) {
         logMessage += `\nStack Trace:\n${stack}`;
     }

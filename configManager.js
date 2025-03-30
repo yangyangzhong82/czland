@@ -1,6 +1,6 @@
 // configManager.js
 const CONFIG_PATH = './plugins/area/config.json';
-const CURRENT_VERSION = "1.6.4";
+const CURRENT_VERSION = "1.7.0"; // 版本号递增
 const { logInfo, logError, logDebug } = require('./logger'); // 确保引入 logger
 
 const DEFAULT_CONFIG = {
@@ -8,20 +8,6 @@ const DEFAULT_CONFIG = {
     spatialIndex: {
         chunkSize: 16  // 默认区块大小
     },
-    // 旧的可视化配置，保留用于兼容或未来可能的其他可视化
-    /*
-    visualization: {
-        enabled: true, // 这个可以考虑是否保留，或者合并到 bsci.enabled
-        duration: 30,          // 显示时间，单位为秒
-        color: {
-            r: 0,              // 红色分量
-            g: 191,            // 绿色分量
-            b: 255,            // 蓝色分量
-            a: 255             // 透明度
-        },
-        thickness: 1.5         // 线条粗细
-    },
-    */
     // 新增 BSCI 专用配置
     bsci: {
         enabled: true,         // BSCI 功能总开关
@@ -38,6 +24,18 @@ const DEFAULT_CONFIG = {
             g: 165,
             b: 0,
             a: 255
+        },
+        subAreaColorLevel2: { // 第二级子区域轮廓颜色
+            r: 135,
+            g: 206,
+            b: 250,
+            a: 255 // LightSkyBlue
+        },
+        subAreaColorLevel3: { // 第三级子区域轮廓颜色 (实际是第二层子区域)
+             r: 255,
+             g: 215,
+             b: 0,
+             a: 255 // Gold
         },
         selectionPointColor: { // 选点时显示的颜色
             r: 0,
@@ -258,9 +256,9 @@ const DEFAULT_CONFIG = {
         "dropItems",
         "openContainer"
     ],
-    economy: {
+    economy: { // 主经济系统配置（用于购买/租赁等）
         enabled: true, // 是否启用经济系统
-        type: "money", // 经济类型: "money" 或 "scoreboard"
+        type: "money", // 经济类型: "money" 或 "scoreboard" 或 "czmoney"
         scoreboardObjective: "money", // 当type为"scoreboard"时使用的计分板名称
         pricePerBlock: 1, // 每个方块的基础价格
         priceByVolume: true, // 是否按体积计算价格
@@ -275,6 +273,36 @@ const DEFAULT_CONFIG = {
         priceFormula: {
             useCustom: false, // 是否使用自定义公式
             formula: "length * width * height * pricePerBlock" // 自定义价格计算公式
+        },
+        // 新增：子区域专属经济配置
+        subareaEconomy: {
+            enabled: true, // 是否为子区域启用独立经济配置 (如果false，则子区域使用主区域配置)
+            // 如果以下配置项为 null 或未定义，则通常回退到主区域的相应设置
+            pricePerBlock: null, // 子区域专属的每方块价格 (null 则使用主区域的)
+            priceByVolume: null, // 子区域是否按体积计算 (null 则使用主区域的)
+            priceFormula: {      // 子区域专属公式
+                useCustom: false, // 是否使用子区域自定义公式
+                formula: "volume * pricePerBlock * coefficient" // 示例：包含体积、单价和系数
+            },
+            // 子区域价格系数 (即使使用独立配置，系数仍然有用)
+            priceCoefficients: { // 重命名以放入 subareaEconomy
+                level1: 1.0, // 一级子区域 (深度 1) 的价格系数
+                level2: 0.8  // 二级子区域 (深度 2) 的价格系数 (示例：打八折)
+            },
+            // 注意：minPrice, maxPrice, refundRate 通常建议与主区域保持一致，
+            // 但如果需要也可以在这里添加独立配置。为简化，暂时不加。
+        }
+    },
+    // 新增：传送点配置
+    teleport: {
+        enabled: true, // 是否启用区域传送功能
+        costPerTeleport: 10, // 每次传送的固定费用
+        teleportCooldown: 5, // 玩家每次传送的冷却时间（秒），0 或负数表示无冷却
+        preventTeleportIfInside: true, // 是否阻止玩家传送到他们当前所在的区域
+        economy: { // 传送使用的独立经济配置
+            enabled: true, // 是否对传送收费 (如果 costPerTeleport > 0, 这个也应该是 true)
+            type: "money", // 经济类型: "money", "scoreboard", "czmoney"
+            scoreboardObjective: "teleport_cost" // 当type为"scoreboard"时使用的计分板名称
         }
     },
     areaSizeLimits: {
@@ -294,11 +322,50 @@ const DEFAULT_CONFIG = {
         // 子区域单独配置（如果为null则使用主区域配置）
         subarea: {
             enabled: true,
+            allowSubareaOutsideParent: false, // 新增：是否允许子区域超出父区域范围
             min: null,  // 为null时使用主区域配置
             max: null   // 为null时使用主区域配置
+        },
+        // 新增：一级子区域 (Level 2) 单独配置
+        subareaLevel2: {
+            enabled: true, // 是否对此层级启用单独限制
+            min: null,     // null 则使用 subarea 或主区域配置
+            max: null      // null 则使用 subarea 或主区域配置
+        },
+        // 新增：二级子区域 (Level 3) 单独配置
+        subareaLevel3: {
+            enabled: true, // 是否对此层级启用单独限制
+            min: null,     // null 则使用 subarea 或主区域配置
+            max: null      // null 则使用 subarea 或主区域配置
         }
+    },
+    // 子区域层级创建限制
+    subAreaCreationLimits: { // 重命名以区分大小限制
+        allowLevel2: true, // 是否允许创建一级子区域 (第二层, 深度 1)
+        allowLevel3: true  // 是否允许创建二级子区域 (第三层, 深度 2)
+    },
+    // 新增：玩家区域拥有数量和总体积限制
+    playerAreaLimits: {
+        enabled: true, // 是否启用此限制
+        main: {
+            maxCount: 5,        // 主区域最大数量 (-1 为不限制)
+            maxTotalVolume: 500000 // 主区域最大总体积 (-1 为不限制)
+        },
+        subarea: { // 对应深度 1 的子区域
+            maxCount: 10,       // 一级子区域最大数量 (-1 为不限制)
+            maxTotalVolume: 200000 // 一级子区域最大总体积 (-1 为不限制)
+        },
+        subareaLevel2: { // 对应深度 2 的子区域
+            maxCount: 15,       // 二级子区域最大数量 (-1 为不限制)
+            maxTotalVolume: 100000 // 二级子区域最大总体积 (-1 为不限制)
+        },
+        subareaLevel3: { // 对应深度 3 的子区域 (如果 subAreaCreationLimits.allowLevel3 为 true)
+            maxCount: 20,       // 三级子区域最大数量 (-1 为不限制)
+            maxTotalVolume: 50000  // 三级子区域最大总体积 (-1 为不限制)
+        },
+        // 注意：更深层级的子区域将使用 subareaLevel3 的限制（如果允许创建）
     }
-
+    // 移除旧的 subareaPriceCoefficients，已移入 economy.subareaEconomy
 };
 
 // --- Iterative Merge Function ---
@@ -307,7 +374,19 @@ function mergeConfigIterative(target, source) {
     const mergedObjects = new Map(); // Track merged objects to handle potential cycles (though unlikely in JSON)
 
     // Deep clone the initial target to avoid modifying the original userConfig directly during the process
-    const result = JSON.parse(JSON.stringify(target));
+    let result;
+     try {
+         result = JSON.parse(JSON.stringify(target));
+     } catch (e) {
+         logError(`初始化配置克隆失败: ${e.message}. 将使用源配置作为基础。`);
+         // Fallback: If cloning target fails (e.g., invalid structure), start with a clone of the source (default)
+         try {
+             result = JSON.parse(JSON.stringify(source));
+         } catch (e2) {
+             logError(`克隆默认配置也失败: ${e2.message}. 返回原始目标配置。`);
+             return target; // Last resort
+         }
+     }
     stack[0].target = result; // Update stack entry to point to the cloned target
 
     while (stack.length > 0) {
@@ -323,23 +402,36 @@ function mergeConfigIterative(target, source) {
         for (const key in currentSource) {
             if (Object.prototype.hasOwnProperty.call(currentSource, key)) {
                 const sourceValue = currentSource[key];
-                const targetValue = currentTarget[key];
+                let targetValue = currentTarget ? currentTarget[key] : undefined; // Handle cases where currentTarget might be null/undefined during recursion
+
+                // Ensure targetValue exists before checking its type if currentTarget is valid
+                if (currentTarget && typeof targetValue === 'undefined' && key in currentTarget) {
+                    targetValue = currentTarget[key]; // Re-fetch if initially undefined but key exists
+                }
+
 
                 if (
                     typeof sourceValue === 'object' &&
                     sourceValue !== null &&
-                    !Array.isArray(sourceValue) &&
-                    typeof targetValue === 'object' && // Check if target also has an object for this key
-                    targetValue !== null &&
-                    !Array.isArray(targetValue)
+                    !Array.isArray(sourceValue) && // Source is an object
+                    currentTarget // Ensure target is valid before proceeding
                 ) {
-                    // If both are objects, push them onto the stack for later merging
-                    // Ensure the target object exists if it doesn't
-                     if (!(key in currentTarget)) {
-                         currentTarget[key] = {}; // Create object in target if missing
+                     // Target value exists and is also an object (or needs to be created)
+                     if (typeof targetValue !== 'object' || targetValue === null || Array.isArray(targetValue)) {
+                         // If target is not an object, overwrite it with a clone of the source object structure
+                         // This handles cases where user config might have a primitive where an object is expected
+                         try {
+                             currentTarget[key] = JSON.parse(JSON.stringify(sourceValue));
+                             logDebug(`配置键 "${key}" 类型不匹配或不存在，已用默认对象结构覆盖。`);
+                         } catch (e) {
+                             logError(`克隆源对象失败 (key: ${key}): ${e.message}`);
+                             currentTarget[key] = {}; // Fallback to empty object
+                         }
+                     } else {
+                         // Both are objects, push to stack for deeper merge
+                         stack.push({ target: currentTarget[key], source: sourceValue });
                      }
-                    stack.push({ target: currentTarget[key], source: sourceValue });
-                } else if (!(key in currentTarget)) {
+                } else if (currentTarget && !(key in currentTarget)) {
                     // If the key doesn't exist in the target, add it from the source
                     // Deep clone source value if it's an object/array to prevent shared references
                      try {
@@ -373,9 +465,15 @@ function loadConfig() {
         return DEFAULT_CONFIG;
     }
 
+    let userConfig = {}; // Initialize userConfig
     try {
         const content = File.readFrom(CONFIG_PATH);
-        let userConfig = JSON.parse(content);
+        if (!content) {
+             logWarning(`配置文件 ${CONFIG_PATH} 为空，将使用默认配置。`);
+             saveConfig(DEFAULT_CONFIG);
+             return DEFAULT_CONFIG;
+        }
+        userConfig = JSON.parse(content);
 
         // 检查版本并合并更新
         if (!userConfig.version || userConfig.version !== CURRENT_VERSION) {
@@ -398,23 +496,20 @@ function loadConfig() {
             const mergedConfig = mergeConfigIterative(userConfig, DEFAULT_CONFIG);
 
             // 检查合并后的配置是否与原始用户配置不同 (使用迭代合并后的结果)
-            // 使用简单的比较可能不够，因为对象顺序可能变化，但对于补充缺失键是有效的
-            // 注意：深比较 JSON 字符串可能因键顺序不同而误判，但这里主要目的是捕捉是否补充了键
             let configChanged = false;
             try {
+                // 更可靠的比较方式：比较两个对象的字符串表示形式
                 if (JSON.stringify(mergedConfig) !== JSON.stringify(userConfig)) {
                     configChanged = true;
                 }
             } catch (stringifyError) {
-                // 如果序列化失败（例如循环引用，虽然不太可能），也标记为已更改以尝试保存
-                logError(`序列化配置时出错: ${stringifyError.message}`);
-                configChanged = true; // 尝试保存修复后的版本
+                logError(`序列化配置以进行比较时出错: ${stringifyError.message}`);
+                configChanged = true; // Assume changed if serialization fails
             }
 
 
             if (configChanged) {
-                 // logDebug("区域保护系统: 配置文件结构与默认值存在差异或缺少键，已合并/补充。正在保存..."); // 移除此处的 logDebug 调用
-                 logInfo("区域保护系统: 配置文件结构已与默认值合并/补充。正在保存..."); // 可以用 logInfo 替代，如果需要日志的话
+                 logInfo("区域保护系统: 配置文件结构已与默认值合并/补充。正在保存...");
                  saveConfig(mergedConfig); // 保存合并后的版本
             }
 

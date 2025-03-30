@@ -515,7 +515,13 @@ const DEFAULT_PERMISSIONS = {
         id: "enterArea",
         name: "进入区域",
         description: "允许玩家进入此区域",
-        category: "移动" // 新增一个移动分类或者放在交互分类
+        category: "移动"
+    },
+    TELEPORT: { // 新增传送权限
+        id: "teleport",
+        name: "传送到区域",
+        description: "允许玩家传送到此区域的传送点",
+        category: "移动"
     },
     SET_AREA_RULES: {
         id: "setAreaRules",
