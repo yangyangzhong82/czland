@@ -12,14 +12,13 @@ const { calculateAreaPrice, handleAreaPurchase, handleAreaRefund } = require('./
 const { loadConfig } = require('./configManager');
 const { showSubAreaManageForm } = require('./subareaForms');
 const {logDebug, logInfo, logWarning, logError } = require('./logger');
-
+const { setAreaTeleportPoint, teleportPlayerToArea } = require('./teleport'); 
 
 function showMainForm(player) {
     const fm = mc.newSimpleForm();
     fm.setTitle("区域管理系统");
-    fm.addButton("管理脚下区域", "textures/items/compass_item"); // 更新指南针图标
-    fm.addButton("区域列表", "textures/items/map_locked"); // 更新书本图标
-    // 主菜单不需要返回按钮
+    fm.addButton("管理脚下区域", "textures/items/compass_item"); 
+    fm.addButton("区域列表", "textures/items/map_locked"); 
 
     player.sendForm(fm, (player, id) => {
         if (id === null) return; // 玩家取消表单返回null
@@ -44,7 +43,6 @@ function handleCurrentArea(player) {
     // 构建空间索引
     const spatialIndex = buildSpatialIndex(areaData);
 
-    // 将空间索引传递给 getPriorityAreasAtPosition
     const areasAtPos = getPriorityAreasAtPosition(pos, areaData, spatialIndex);
 
     if (areasAtPos.length === 0) {
@@ -386,6 +384,27 @@ function showAreaOperateForm(player, areaId, origin = 'main') {
         buttonHandlers.push(() => showSubAreaManageForm(player, areaId, origin));
     }
 
+    const config = loadConfig(); // 加载配置以检查传送功能是否启用
+    if (config.teleport && config.teleport.enabled) {
+        // 设置传送点按钮 - 需要 MANAGE 权限
+        if (checkPermission(player, areaData, areaId, "MANAGE")) {
+            fm.addButton("设置传送点", "textures/items/ender_pearl"); // 末影珍珠图标
+            buttonHandlers.push(() => {
+                if (setAreaTeleportPoint(player, areaId)) {
+                }
+                setTimeout(() => showAreaOperateForm(player, areaId, origin), 100); // 短暂延迟后显示
+            });
+        }
+
+        if (checkPermission(player, areaData, areaId, "MANAGE")) {
+            fm.addButton("传送到此区域", "textures/items/chorus_fruit"); // 紫颂果图标
+            buttonHandlers.push(() => {
+                teleportPlayerToArea(player, areaId);
+                // 传送后表单会自动关闭，不需要额外操作
+            });
+        }
+    }
+
     // 添加返回按钮
     fm.addButton("§c返回", "textures/ui/cancel"); // 路径正确
     const backButtonIndex = buttonHandlers.length; // 返回按钮是最后一个
@@ -672,7 +691,6 @@ function showAreaInfo(player, areaId, origin) {
 module.exports = {
     showMainForm,
     showAreaOperateForm,
-    // 也导出其他可能被外部调用的表单函数（如果需要）
     showAreaListForm,
     handleCurrentArea,
     showAreaInfo,

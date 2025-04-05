@@ -594,7 +594,7 @@ iListenAttentively.emplaceListener(
 function handlePlayerMovement(player) {
     const currentPos = player.pos;
     if (!currentPos || currentPos.x === undefined || currentPos.y === undefined || currentPos.z === undefined || currentPos.dimid === undefined) {
-        logDebug(`玩家 ${player.name} 位置无效或不完整，跳过移动检查`);
+        //logDebug(`玩家 ${player.name} 位置无效或不完整，跳过移动检查`);
         return; // 增加更严格的位置有效性检查
     }
 
@@ -605,7 +605,7 @@ function handlePlayerMovement(player) {
 
     // 如果玩家之前没有记录位置或初次进入，将位置存储在历史记录中
     if (!playerPositionHistory[playerUUID] || playerPositionHistory[playerUUID].length === 0) {
-        logDebug(`首次跟踪玩家 ${player.name} 位置`);
+        //logDebug(`首次跟踪玩家 ${player.name} 位置`);
         updatePositionHistory(playerUUID, currentPos); // 初始化时也更新历史
         return; // 首次位置跟踪，允许
     }
@@ -636,7 +636,7 @@ function handlePlayerMovement(player) {
 
         if (currentPriorityArea) {
             // 进入了一个新的最高优先级区域
-            logDebug(`玩家 ${player.name} 尝试进入新的最高优先级区域 ${currentPriorityArea.area.name} (ID: ${currentPriorityAreaId})，先前区域ID: ${prevPriorityAreaId}`);
+            //logDebug(`玩家 ${player.name} 尝试进入新的最高优先级区域 ${currentPriorityArea.area.name} (ID: ${currentPriorityAreaId})，先前区域ID: ${prevPriorityAreaId}`);
 
             // 检查进入权限
             if (!checkPriorityPermission(player, currentPos, PERMISSIONS.ENTER_AREA.id, areaData, spatialIndex)) {
@@ -671,12 +671,12 @@ function handlePlayerMovement(player) {
                     return; // 无论传送是否成功，都阻止进入并返回
                 }
             } else {
-                logDebug(`玩家 ${player.name} 权限检查通过，允许进入区域 ${currentPriorityArea.area.name}`);
+                //logDebug(`玩家 ${player.name} 权限检查通过，允许进入区域 ${currentPriorityArea.area.name}`);
                 // 权限允许，继续执行下面的历史更新
             }
         } else {
             // 离开了所有区域 (currentPriorityAreaId is null, prevPriorityAreaId was not)
-            logDebug(`玩家 ${player.name} 已离开区域 ${prevPriorityArea.area.name} (ID: ${prevPriorityAreaId}) 进入野外`);
+            //logDebug(`玩家 ${player.name} 已离开区域 ${prevPriorityArea.area.name} (ID: ${prevPriorityAreaId}) 进入野外`);
             // 无需权限检查，继续执行下面的历史更新
         }
     } else {

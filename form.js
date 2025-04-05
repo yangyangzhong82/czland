@@ -1,5 +1,5 @@
 
-const { isInArea, checkNewAreaOverlap ,checkAreaSizeLimits} = require('./utils');
+const { isInArea, checkNewAreaOverlap ,checkAreaSizeLimits, calculateAreaVolume, calculatePlayerTotalAreaSize } = require('./utils'); // 引入 calculateAreaVolume, calculatePlayerTotalAreaSize
 const { calculateAreaPrice, handleAreaPurchase } = require('./economy');
 const { loadConfig } = require('./configManager'); // 引入 loadConfig
 const {logDebug, logInfo, logWarning, logError } = require('./logger');
@@ -34,6 +34,17 @@ function showCreateAreaForm(pl, point1, point2, areaData, playerData, saveAreaDa
     // 构造详细信息
     form.addLabel(`§f区域大小: ${length}(长) x ${width}(宽) x ${height}(高) = ${volume}(体积)`);
     form.addLabel(`§f所在维度: ${dimensionName} (价格倍率: x${dimMultiplier})`);
+
+    // --- 新增：显示当前总大小和限制 ---
+    const currentTotalSize = calculatePlayerTotalAreaSize(pl.xuid, areaData);
+    let sizeLimitText = "";
+    if (config.maxTotalAreaSizePerPlayer > 0) {
+        sizeLimitText = ` / ${config.maxTotalAreaSizePerPlayer}`;
+    } else {
+        sizeLimitText = " (无限制)";
+    }
+    form.addLabel(`§f当前拥有总大小: ${currentTotalSize}${sizeLimitText}`);
+    // --- 结束 ---
 
     if (economyConfig.enabled) {
         const price = calculateAreaPrice(point1, point2);
@@ -73,11 +84,11 @@ function showCreateAreaForm(pl, point1, point2, areaData, playerData, saveAreaDa
         // 需要找到 addInput 在所有 addXXX 调用中的位置
         // --- 修改表单数据索引 ---
         // 根据前面添加的 Label 数量动态计算 Input 的索引
-        // 基础 Label 数量: 大小(1) + 维度(1) + 范围(1) = 3
+        // 基础 Label 数量: 大小(1) + 维度(1) + 当前总大小(1) + 范围(1) = 4
         // 经济系统启用时额外增加: 计算方式(1) + 最终费用(1) + 价格范围(1) = 3
         // 经济系统禁用时额外增加: 免费提示(1) = 1
         // Input 在 Label 之后
-        let labelCount = 2; // 起始就有 大小 和 维度 两个 Label
+        let labelCount = 3; // 起始就有 大小, 维度, 当前总大小 三个 Label
         if (economyConfig.enabled) {
             labelCount += 3; // 计算方式, 最终费用, 价格范围
         } else {
@@ -122,6 +133,18 @@ function showCreateAreaForm(pl, point1, point2, areaData, playerData, saveAreaDa
             player.tell(`§c无法创建区域：与现有区域 "${overlapCheck.overlappingArea.name}" 重叠！`);
             return;
         }
+
+        // --- 新增：检查总区域大小限制 ---
+        if (!isAreaAdmin(player.uuid) && config.maxTotalAreaSizePerPlayer > 0) {
+            const currentTotalSize = calculatePlayerTotalAreaSize(player.xuid, areaData);
+            const newAreaVolume = calculateAreaVolume({ point1, point2 }); // 计算新区域体积
+            if (currentTotalSize + newAreaVolume > config.maxTotalAreaSizePerPlayer) {
+                player.tell(`§c无法创建区域：创建后总区域大小将达到 ${currentTotalSize + newAreaVolume}，超过了你的总大小限制 ${config.maxTotalAreaSizePerPlayer}！`);
+                return;
+            }
+        }
+        // --- 检查结束 ---
+
 
         // --- 修改 handleAreaPurchase 调用 ---
         // 不再需要在回调中计算 price，因为上面已经计算过了

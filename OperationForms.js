@@ -1,9 +1,10 @@
 const { loadAreaData, saveAreaData } = require('./config');
 const { getAreaData, updateAreaData } = require('./czareaprotection'); // Added updateAreaData
-const { isInArea, isAreaWithinArea, checkNewAreaOverlap, checkAreaSizeLimits } = require('./utils'); // Added utils functions
+const { isInArea, isAreaWithinArea, checkNewAreaOverlap, checkAreaSizeLimits, calculateAreaVolume, calculatePlayerTotalAreaSize } = require('./utils'); // Added utils functions and volume/total size calculators
 const getOfflinePlayerData = ll.import("PlayerData", "getOfflinePlayerData");
 const { getPlayerCustomGroups, createCustomGroup, editCustomGroup, deleteCustomGroup, getAllCustomGroups } = require('./customGroups'); // Ensure getAllCustomGroups is imported if needed elsewhere, though getAvailableGroups uses it internally
 const { checkPermission, setPlayerPermission, getPlayerPermission, getAvailableGroups, getAreaDefaultGroup, setAreaDefaultGroup, resetCache } = require('./permission'); // Removed DEFAULT_GROUPS import, Added resetCache
+const { isAreaAdmin } = require('./areaAdmin'); // Import isAreaAdmin
 const { getPlayerData } = require('./playerDataManager');
 const { calculateAreaPrice, handleAreaPurchase, handleAreaRefund, getPlayerBalance, reducePlayerBalance, addPlayerBalance } = require('./economy'); // Added economy functions
 // LiteLoader-AIDS automatic generated
@@ -112,6 +113,30 @@ function confirmResizeArea(player, areaId, origin) {
         showAreaOperateForm(player, areaId, origin); // 返回时传递 origin
         return;
     }
+
+    // --- 新增：检查总区域大小限制 (仅对主区域生效) ---
+    if (!area.isSubarea && !isAreaAdmin(player.uuid) && config.maxTotalAreaSizePerPlayer > 0) {
+        // 1. 计算玩家当前拥有的 *其他* 主区域的总大小
+        let currentTotalSizeExcludingThis = 0;
+        for (const id in areaData) {
+            const otherArea = areaData[id];
+            if (id !== areaId && otherArea.xuid === player.xuid && !otherArea.isSubarea) {
+                currentTotalSizeExcludingThis += calculateAreaVolume(otherArea);
+            }
+        }
+
+        // 2. 计算新区域的体积
+        const newAreaVolume = calculateAreaVolume({ point1, point2 });
+
+        // 3. 检查调整后的总大小是否超限
+        if (currentTotalSizeExcludingThis + newAreaVolume > config.maxTotalAreaSizePerPlayer) {
+            player.tell(`§c无法调整区域范围：调整后总区域大小将达到 ${currentTotalSizeExcludingThis + newAreaVolume}，超过了你的总大小限制 ${config.maxTotalAreaSizePerPlayer}！`);
+            showAreaOperateForm(player, areaId, origin); // 返回操作菜单
+            return;
+        }
+    }
+    // --- 检查结束 ---
+
 
     let originalPrice = 0;
     let newPrice = 0;
@@ -701,6 +726,7 @@ function showAreaRulesForm(player, areaId, origin) {
         allowEndermanPlaceBlock: false,
         allowExplosionDamageBlock: false,
         allowFarmlandDecay: false,
+        allowDragonEggTeleport: false,
         displayTitle: true,
         displayActionBar: true,
         mobSpawnExceptions: [], // Ensure array exists
@@ -743,6 +769,7 @@ function showAreaRulesForm(player, areaId, origin) {
         allowEndermanPlaceBlock: "允许末影人放置方块",
         allowExplosionDamageBlock: "允许爆炸破坏区域内方块",
         allowFarmlandDecay: "允许耕地被踩踏破坏",
+        allowDragonEggTeleport: "允许龙蛋传送", 
         displayTitle: "§b允许显示进入区域标题",
         displayActionBar: "§b允许在物品栏上方显示区域信息",
     };

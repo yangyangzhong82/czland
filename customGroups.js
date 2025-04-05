@@ -220,11 +220,16 @@ function createCustomGroup(uuid, groupName, displayName, permissions, inheritFro
         logger.error(`创建自定义权限组失败：无效的参数 (UUID: ${uuid}, GroupName: ${groupName}, DisplayName: ${displayName})`);
         return false;
     }
-    const permissionsArray = Array.isArray(permissions) ? permissions : [];
+     const permissionsArray = Array.isArray(permissions) ? permissions : [];
 
+   let db; // Declare db outside try block for finally/rollback
    try {
-       const db = getDbSession();
+       db = getDbSession();
        // Use INSERT OR REPLACE to handle creation or update semantics
+
+       // --- 开始事务 ---
+       db.exec("BEGIN TRANSACTION");
+
        const stmt = db.prepare(`
            INSERT OR REPLACE INTO custom_groups (uuid, groupName, displayName, permissions)
            VALUES (?, ?, ?, ?)
@@ -240,15 +245,28 @@ function createCustomGroup(uuid, groupName, displayName, permissions, inheritFro
        stmt.execute();
        // stmt.reset(); // Reset if the stmt object is reused
 
-       // Check affected rows if needed (INSERT OR REPLACE makes this tricky, might always be 1)
-       // const changes = stmt.affectedRows; // Check API doc for availability
-       // logDebug(`创建/替换权限组 ${groupName} (UUID: ${uuid}), 受影响行数: ${changes}`);
+       // --- 提交事务 ---
+       db.exec("COMMIT");
 
        logInfo(`成功创建/替换权限组: ${displayName} (${groupName}) for UUID: ${uuid}`);
        return true;
    } catch(e) {
        logger.error(`创建/替换自定义权限组 ${groupName} (UUID: ${uuid}) 失败: ${e}`, e.stack);
+       // --- 发生错误时回滚事务 ---
+       if (db && db.isOpen()) {
+           try {
+               db.exec("ROLLBACK");
+               logger.info(`自定义权限组创建/替换事务 (UUID: ${uuid}, Group: ${groupName}) 已回滚`);
+           } catch(rollbackErr) {
+               logger.error(`事务回滚失败: ${rollbackErr}`);
+           }
+       } else {
+            logger.error("数据库连接无效，无法回滚事务");
+       }
        return false;
+   } finally {
+        // Finalize/reset statement if needed, though typically not required if not reused
+        // if (stmt) stmt.finalize(); // Or reset depending on API
    }
 }
 

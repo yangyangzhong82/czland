@@ -18,7 +18,7 @@ function worldToChunkCoords(x, z) {
  * @returns {object} spatialIndex - { dimId: { chunkX: { chunkZ: [areaId1, ...] } } }
  */
 function buildSpatialIndex(areaData) {
-    logDebug("开始构建空间索引...");
+    //logDebug("开始构建空间索引...");
     const spatialIndex = {}; // { dimId: { chunkX: { chunkZ: [areaId1, ...] } } }
 
     for (const areaId in areaData) {
@@ -62,8 +62,8 @@ function buildSpatialIndex(areaData) {
             }
         }
     }
-    logDebug("空间索引构建完成。");
-    logDebug("索引内容:", JSON.stringify(spatialIndex, null, 2)); // 可选：打印索引内容进行调试
+    //logDebug("空间索引构建完成。");
+    //logDebug("索引内容:", JSON.stringify(spatialIndex, null, 2)); // 可选：打印索引内容进行调试
     return spatialIndex;
 }
 
@@ -83,7 +83,7 @@ function querySpatialIndex(pos, spatialIndex) {
 
     try {
         const candidates = spatialIndex?.[dimId]?.[chunkX]?.[chunkZ];
-        logDebug(`查询索引: dim=${dimId}, cx=${chunkX}, cz=${chunkZ}, 候选区域数=${candidates ? candidates.length : 0}`);
+        //logDebug(`查询索引: dim=${dimId}, cx=${chunkX}, cz=${chunkZ}, 候选区域数=${candidates ? candidates.length : 0}`);
         return candidates || []; // 返回空数组，而不是undefined
     } catch (e) {
         logError(`查询空间索引时出错: dim=${dimId}, cx=${chunkX}, cz=${chunkZ}`, e);

@@ -6,10 +6,12 @@ const { loadConfig, saveConfig } = require('./configManager'); // 导入 saveCon
 const { getDbSession } = require('./database');
 const {logDebug, logInfo, logWarning, logError } = require('./logger');
 const { loadCustomGroups } = require('./customGroups'); // 确保引入 loadCustomGroups
+const getOfflinePlayerData = ll.import("PlayerData", "getOfflinePlayerData"); // 引入获取离线玩家数据
 let permissionCache = {}; // 玩家权限缓存 {playerUuid: {areaId: groupName}}
 let customGroupsCache = {}; // 自定义组缓存 {uuid: {groupName: {name, permissions, inherit}}}
 let defaultGroupsCache = {}; // 区域默认组缓存 {areaId: groupName}
 let systemDefaultPermissionsCache = null; // 系统默认权限缓存
+let playerNameCache = {}; // 玩家名称缓存 {uuid: name}
 const CACHE_TTL = 5 * 60 * 1000; // 缓存有效期(5分钟)
 let lastCacheCleanup = Date.now();
 // 加载权限数据
@@ -17,14 +19,13 @@ let lastCacheCleanup = Date.now();
 
 // 移除 getDefaultGroupConfig 函数
 
-function groupHasAdminPermissions(groupId, groupsData) { // groupsData 现在是自定义组
-    // const groups = getAvailableGroups(); // Avoid reloading all groups repeatedly
-    const group = groupsData[groupId]; // Assumes groupsData is { groupName: { permissions: [...] } }
+// 修改：接受 group 对象，而不是 groupId 和 groupsData
+function groupHasAdminPermissions(group) {
     if (!group || !Array.isArray(group.permissions)) return false;
 
     // Check PERMISSIONS registry (ensure it's loaded/available)
     if (!PERMISSIONS || typeof PERMISSIONS !== 'object') {
-        logger.error("PERMISSIONS registry not available for admin check");
+        logError("PERMISSIONS registry not available for admin check");
         return false;
     }
 
@@ -39,37 +40,52 @@ function groupHasAdminPermissions(groupId, groupsData) { // groupsData 现在是
     return false; // No admin permission found in the group
 }
 
-// 获取所有可用的自定义权限组 (不再包含系统默认组)
-function getAvailableGroups() {
-    let customGroupsData = {};
-    try {
-        // 调用从 customGroups.js 引入的函数
-        // loadCustomGroups 返回格式为 { uuid: { groupName: groupDetails } }
-        // 需要转换格式为 { groupName: { name: '...', permissions: [...] }, ... }
-        const allPlayerGroups = loadCustomGroups(); // 使用 loadCustomGroups()
-        const uniqueGroups = {};
+// 获取玩家名称（带缓存）
+function getPlayerNameCached(uuid) {
+    if (!playerNameCache[uuid]) {
+        const playerData = getOfflinePlayerData(uuid);
+        playerNameCache[uuid] = playerData ? playerData.name : null;
+        // 可以添加时间戳和 TTL 清理逻辑，但对于玩家名称，通常不需要频繁更新
+    }
+    return playerNameCache[uuid];
+}
 
-        for (const uuid in allPlayerGroups) {
-            for (const groupName in allPlayerGroups[uuid]) {
-                if (!uniqueGroups[groupName]) {
-                    // 只添加一次，使用找到的第一个定义（或者可以考虑合并权限，但通常不这么做）
-                    uniqueGroups[groupName] = allPlayerGroups[uuid][groupName];
-                }
+
+// 获取所有可用的自定义权限组 (包含创建者信息)
+// 返回格式: { groupName_creatorUuid: { name, permissions, inherit, creatorUuid, creatorName, originalGroupName } }
+function getAvailableGroups() {
+    let availableGroups = {};
+    try {
+        // loadCustomGroups 返回格式为 { uuid: { groupName: groupDetails } }
+        const allPlayerGroups = loadCustomGroups(); // 使用 loadCustomGroups()
+
+        for (const creatorUuid in allPlayerGroups) {
+            const creatorName = getPlayerNameCached(creatorUuid) || '未知玩家'; // 获取创建者名称
+            for (const groupName in allPlayerGroups[creatorUuid]) {
+                const groupDetails = allPlayerGroups[creatorUuid][groupName];
+                // 使用 groupName 和 creatorUuid 创建唯一键
+                const uniqueKey = `${groupName}_${creatorUuid}`;
+
+                availableGroups[uniqueKey] = {
+                    ...groupDetails, // 复制组详情
+                    creatorUuid: creatorUuid,
+                    creatorName: creatorName,
+                    originalGroupName: groupName // 保存原始组名，因为键现在是组合的
+                };
             }
         }
-        customGroupsData = uniqueGroups;
 
-        if (typeof customGroupsData !== 'object' || customGroupsData === null) {
-            logWarning("getAllCustomGroups() 或处理后的结果不是有效的对象，自定义组可能缺失。");
-            customGroupsData = {};
+        if (typeof availableGroups !== 'object' || availableGroups === null) {
+            logWarning("loadCustomGroups() 或处理后的结果不是有效的对象，自定义组可能缺失。");
+            availableGroups = {};
         }
     } catch (error) {
         logError(`获取自定义权限组时出错: ${error}`, error.stack);
-        customGroupsData = {}; // 出错时返回空对象
+        availableGroups = {}; // 出错时返回空对象
     }
 
-    logDebug(`可用的自定义权限组列表: ${Object.keys(customGroupsData).join(', ')}`);
-    return customGroupsData; // 只返回自定义组
+    logDebug(`可用的自定义权限组列表 (含创建者信息): ${Object.keys(availableGroups).length} 个`);
+    return availableGroups; // 返回包含创建者信息的对象，键是唯一的
 }
 
 

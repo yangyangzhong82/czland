@@ -34,13 +34,13 @@ function getPriorityAreasAtPosition(pos, areaData, spatialIndex) {
     let areasAtPos = [];
     const candidateAreaIds = querySpatialIndex(pos, spatialIndex); // 使用索引获取候选区域
 
-    logDebug(`位置 ${JSON.stringify(pos)} 的候选区域数: ${candidateAreaIds.length}`);
+    //logDebug(`位置 ${JSON.stringify(pos)} 的候选区域数: ${candidateAreaIds.length}`);
 
     // 递归函数计算区域深度
     const getAreaDepth = (areaId, currentDepth = 0, visited = new Set()) => {
         // --- Debug Log ---
         try { // Add try-catch for safety during debugging
-            logDebug(`[getAreaDepth] Checking areaId: ${areaId}, currentDepth: ${currentDepth}, visited: ${JSON.stringify(Array.from(visited))}`);
+            //logDebug(`[getAreaDepth] Checking areaId: ${areaId}, currentDepth: ${currentDepth}, visited: ${JSON.stringify(Array.from(visited))}`);
         } catch(e) { logError(`Error logging getAreaDepth start: ${e.message}`); }
         // --- End Debug Log ---
 
@@ -57,16 +57,16 @@ function getPriorityAreasAtPosition(pos, areaData, spatialIndex) {
         const area = areaData[areaId];
         // --- Debug Log ---
         try { // Add try-catch for safety
-            logDebug(`[getAreaDepth] Area ${areaId} data: isSubarea=${area.isSubarea}, parentAreaId=${area.parentAreaId}`);
+            //logDebug(`[getAreaDepth] Area ${areaId} data: isSubarea=${area.isSubarea}, parentAreaId=${area.parentAreaId}`);
         } catch(e) { logError(`Error logging getAreaDepth area data: ${e.message}`); }
         // --- End Debug Log ---
 
         if (!area.isSubarea || !area.parentAreaId) {
-            logDebug(`[getAreaDepth] Area ${areaId} is top-level or missing parent. Returning depth ${currentDepth}.`);
+            //logDebug(`[getAreaDepth] Area ${areaId} is top-level or missing parent. Returning depth ${currentDepth}.`);
             return currentDepth; // 到达顶层区域或数据不完整
         }
         // 递归查找父区域深度
-        logDebug(`[getAreaDepth] Area ${areaId} is subarea. Recursing for parent ${area.parentAreaId} with depth ${currentDepth + 1}.`);
+        //logDebug(`[getAreaDepth] Area ${areaId} is subarea. Recursing for parent ${area.parentAreaId} with depth ${currentDepth + 1}.`);
         return getAreaDepth(area.parentAreaId, currentDepth + 1, visited);
     };
 
@@ -102,7 +102,7 @@ function getPriorityAreasAtPosition(pos, areaData, spatialIndex) {
         return 0;
     });
 
-    logDebug(`位置 ${JSON.stringify(pos)} 实际命中的区域数: ${areasAtPos.length}, 排序后: ${areasAtPos.map(a => `${a.id}(${a.depth})`).join(', ')}`);
+    //logDebug(`位置 ${JSON.stringify(pos)} 实际命中的区域数: ${areasAtPos.length}, 排序后: ${areasAtPos.map(a => `${a.id}(${a.depth})`).join(', ')}`);
     return areasAtPos;
 }
 
@@ -280,6 +280,43 @@ function countPlayerAreas(playerXuid, areaData) {
 }
 
 /**
+ * 计算区域的体积
+ * @param {object} area - 区域对象
+ * @returns {number} 区域的体积
+ */
+function calculateAreaVolume(area) {
+    if (!area || !area.point1 || !area.point2) {
+        logWarning(`[calculateAreaVolume] Invalid area object received: ${JSON.stringify(area)}`);
+        return 0;
+    }
+    const dx = Math.abs(area.point2.x - area.point1.x) + 1;
+    const dy = Math.abs(area.point2.y - area.point1.y) + 1;
+    const dz = Math.abs(area.point2.z - area.point1.z) + 1;
+    return dx * dy * dz;
+}
+
+
+/**
+ * 计算玩家拥有的所有主区域的总大小（体积）
+ * @param {string} playerXuid - 玩家的 XUID
+ * @param {object} areaData - 所有区域的数据
+ * @returns {number} 玩家拥有的主区域总大小
+ */
+function calculatePlayerTotalAreaSize(playerXuid, areaData) {
+    let totalSize = 0;
+    for (const areaId in areaData) {
+        const area = areaData[areaId];
+        // 只计算属于该玩家的主区域
+        if (area.xuid === playerXuid && !area.isSubarea) {
+            totalSize += calculateAreaVolume(area);
+        }
+    }
+    logDebug(`[calculatePlayerTotalAreaSize] Player ${playerXuid} total main area size: ${totalSize}`);
+    return totalSize;
+}
+
+
+/**
  * 检查ID是否匹配配置中的某个模式
  * @param {string} id - 物品、方块或实体的ID
  * @param {Array} patterns - 要匹配的模式数组
@@ -325,6 +362,8 @@ module.exports = {
     getHighestPriorityArea,
     checkAreaSizeLimits,
     countPlayerAreas,
+    calculateAreaVolume, // 导出计算体积函数
+    calculatePlayerTotalAreaSize, // 导出计算总大小函数
     matchesIdPattern,
     findNearestBoundaryPoint
 };

@@ -274,3 +274,37 @@ mc.listen("onMobTrySpawn", function(typeName, pos) {
         return true; // 如果没有区域规则适用，则显式允许生成
     }
 });
+
+// 龙蛋传送事件 (iListenAttentively)
+iListenAttentively.emplaceListener(
+    "ila::mc::world::level::block::DragonEggBlockTeleportBeforeEvent",
+    event => {
+        let x = event["pos"][0];
+        let y = event["pos"][1];
+        let z = event["pos"][2];
+        let dim = event["dimid"];
+        const pos = { x, y, z, dimid: dim === "Overworld" ? 0 : (dim === "Nether" ? 1 : 2) }; // 修正维度ID
+
+        logDebug(`检测到龙蛋传送事件 at (${x}, ${y}, ${z}) 维度: ${dim}`);
+
+        const areaData = getAreaData();
+        const spatialIndex = getSpatialIndex(); // 获取空间索引
+        const areasAtPos = getPriorityAreasAtPosition(pos, areaData, spatialIndex);
+
+        if (areasAtPos.length > 0) {
+            const areaInfo = areasAtPos[0]; // 检查优先级最高的区域
+            const area = areaInfo.area;
+            const areaId = areaInfo.id;
+
+            // 检查区域是否允许龙蛋传送
+            if(!area.rules || area.rules.allowDragonEggTeleport === false) { // 显式检查 false 或 undefined
+                logDebug(`区域 ${areaId} (${area.name}) 不允许龙蛋传送，已拦截`);
+                event["cancelled"] = true;  // 拦截传送
+                return;
+            }
+        }
+
+        logDebug("允许龙蛋传送");
+    },
+    iListenAttentively.EventPriority.High
+);

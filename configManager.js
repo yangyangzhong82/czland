@@ -1,6 +1,6 @@
 // configManager.js
 const CONFIG_PATH = './plugins/area/config.json';
-const CURRENT_VERSION = "1.6.4";
+const CURRENT_VERSION = "1.6.5";
 const { logInfo, logError, logDebug } = require('./logger'); // 确保引入 logger
 
 const DEFAULT_CONFIG = {
@@ -44,6 +44,17 @@ const DEFAULT_CONFIG = {
             g: 255,
             b: 0,
             a: 255
+        }
+    },
+    teleport: {
+        enabled: true, // 是否启用区域传送功能
+        costPerTeleport: 10, // 每次传送的固定费用
+        teleportCooldown: 5, // 玩家每次传送的冷却时间（秒），0 或负数表示无冷却
+        preventTeleportIfInside: true, // 是否阻止玩家传送到他们当前所在的区域
+        economy: { // 传送使用的独立经济配置
+            enabled: true, // 是否对传送收费 
+            type: "money", // 经济类型: "money", "scoreboard", "czmoney"
+            scoreboardObjective: "teleport_cost" // 当type为"scoreboard"时使用的计分板名称
         }
     },
     shulkerBoxTypes: [
@@ -250,6 +261,7 @@ const DEFAULT_CONFIG = {
     displayAreaInfo: true,
     areaInfoDisplayDuration: 5,
     maxAreasPerPlayer: 5,
+    maxTotalAreaSizePerPlayer: -1, // 玩家可拥有的区域总大小限制 (-1 为不限制)
     // defaultGroup: "visitor", // 移除此行，不再使用单一的默认组名
     defaultGroupPermissions: [
         "break",
