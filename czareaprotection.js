@@ -32,10 +32,6 @@ function initializePlugin() {
         initToolSelector(config); // 将配置传递给需要它的模块
         const { loadAreaAdmins } = require('./areaAdmin');
         loadAreaAdmins();
-
-        // 5. 加载并导出 API (确保在所有依赖初始化后)
-        require('./czAreaProtectionAPI');
-        logInfo("czAreaProtection API 模块已加载");
     }
 }
 

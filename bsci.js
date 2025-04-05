@@ -102,74 +102,11 @@ function showSelectionVisualization(player, pos1, pos2) {
         logDebug(`无法为玩家 ${player.name} 创建选点可视化`);
         player.tell("§c无法创建选点可视化。");
     }
-} // <<< Add missing closing brace for showSelectionVisualization
-
-// 递归辅助函数，用于绘制区域及其子区域
-function visualizeAreaRecursive(player, areaId, currentDepth, maxDepth, areaData, config, visualizationIds) {
-    const area = areaData[areaId];
-    if (!area || currentDepth > maxDepth) {
-        return 0; // 超出深度或区域不存在，返回绘制的子区域数量 0
-    }
-
-    const { thickness } = config.bsci;
-    let color;
-    let drawnCount = 0; // 当前层级绘制的区域数量 (包括自身)
-
-    // 根据深度选择颜色
-    switch (currentDepth) {
-        case 0: // 主区域
-            color = config.bsci.mainAreaColor;
-            break;
-        case 1: // 第一级子区域
-            color = config.bsci.subAreaColor;
-            break;
-        case 2: // 第二级子区域
-            color = config.bsci.subAreaColorLevel2;
-            break;
-        // 可以继续添加 case 3: color = config.bsci.subAreaColorLevel3; break; 如果需要第四级
-        default: // 超出预设颜色的层级，使用最后一级颜色或默认颜色
-            color = config.bsci.subAreaColorLevel2; // 或者 config.bsci.subAreaColorLevel3
-            logDebug(`区域 ${areaId} 深度 ${currentDepth} 超出预设颜色，使用 Level 2 颜色`);
-            break;
-    }
-
-    // 绘制当前区域
-    const visId = BSCI.box(
-        area.dimid,
-        area.point1.x, area.point1.y, area.point1.z,
-        area.point2.x, area.point2.y, area.point2.z,
-        color,
-        thickness
-    );
-
-    if (visId) {
-        visualizationIds.push(visId);
-        drawnCount = 1; // 自身绘制成功
-        logDebug(`显示层级 ${currentDepth} 区域 ${areaId} 轮廓，ID: ${visId}`);
-    } else {
-        logError(`无法创建层级 ${currentDepth} 区域 ${areaId} 的轮廓可视化`);
-        return 0; // 当前区域绘制失败，不再递归其子区域
-    }
-
-    // 递归绘制子区域
-    for (const subId in areaData) {
-        const subArea = areaData[subId];
-        if (subArea.isSubarea && subArea.parentAreaId === areaId) {
-            if (subArea.dimid !== area.dimid) {
-                logWarning(`子区域 ${subId} 与父区域 ${areaId} 不在同一维度，跳过可视化。`);
-                continue;
-            }
-            // 递归调用，深度+1，累加绘制的子区域数量
-            drawnCount += visualizeAreaRecursive(player, subId, currentDepth + 1, maxDepth, areaData, config, visualizationIds);
-        }
-    }
-
-    return drawnCount; // 返回总共绘制的区域数量（包括自身和所有递归子区域）
 }
 
 
 /**
- * 显示区域及其最多两级子区域的可视化 (共三层)
+ * 显示区域及其子区域的可视化
  * @param {Player} player 玩家对象
  * @param {string} areaId 区域ID
  */
@@ -180,25 +117,69 @@ function showAreaWithChildrenVisualization(player, areaId) {
         return;
     }
 
-    const { getAreaData } = require('./czareaprotection');
-    const config = loadConfig();
+    const { getAreaData } = require('./czareaprotection'); // 延迟加载，避免循环依赖
+    const config = loadConfig(); // 获取最新配置
     const areaData = getAreaData();
-    const mainArea = areaData[areaId]; // 获取主区域数据
+    const area = areaData[areaId];
 
-    if (!mainArea) {
-        player.tell("§c无法显示区域轮廓：主区域不存在！");
+    if (!area) {
+        player.tell("§c无法显示区域轮廓：区域不存在！");
         return;
     }
 
     // 清除该玩家之前的可视化效果
     clearAreaVisualization(player);
 
-    const { duration } = config.bsci;
-    const visualizationIds = [];
-    const maxDepthToShow = 2; // 0: 主区域, 1: 一级子区域, 2: 二级子区域 (共三层)
+    // 从配置读取颜色和参数
+    const { mainAreaColor, subAreaColor, thickness, duration } = config.bsci;
 
-    // 调用递归函数开始绘制，从深度 0 开始
-    const totalDrawnCount = visualizeAreaRecursive(player, areaId, 0, maxDepthToShow, areaData, config, visualizationIds);
+    // 可视化ID集合
+    const visualizationIds = [];
+
+    // 显示主区域轮廓
+    const mainVisId = BSCI.box(
+        area.dimid,
+        area.point1.x, area.point1.y, area.point1.z,
+        area.point2.x, area.point2.y, area.point2.z,
+        mainAreaColor, // 使用配置的主区域颜色
+        thickness
+    );
+
+    if (mainVisId) {
+        visualizationIds.push(mainVisId);
+        logDebug(`显示主区域 ${areaId} 轮廓，ID: ${mainVisId}`);
+    } else {
+        logError(`无法创建主区域 ${areaId} 的轮廓可视化`);
+    }
+
+    // 显示子区域轮廓
+    let subAreaCount = 0;
+    // 确保 areaData 包含子区域信息，或者通过父子关系查找
+    for (const subId in areaData) {
+        const subArea = areaData[subId];
+        if (subArea.isSubarea && subArea.parentAreaId === areaId) {
+             if (subArea.dimid !== area.dimid) {
+                 logWarning(`子区域 ${subId} 与父区域 ${areaId} 不在同一维度，跳过可视化。`);
+                 continue;
+             }
+             const subVisId = BSCI.box(
+                 subArea.dimid,
+                 subArea.point1.x, subArea.point1.y, subArea.point1.z,
+                 subArea.point2.x, subArea.point2.y, subArea.point2.z,
+                 subAreaColor, // 使用配置的子区域颜色
+                 thickness
+             );
+
+             if (subVisId) {
+                 visualizationIds.push(subVisId);
+                 subAreaCount++;
+                 logDebug(`显示子区域 ${subId} 轮廓，ID: ${subVisId}`);
+             } else {
+                 logError(`无法创建子区域 ${subId} 的轮廓可视化`);
+             }
+        }
+    }
+
 
     // 保存可视化ID和定时器ID
     if (visualizationIds.length > 0) {
@@ -206,11 +187,15 @@ function showAreaWithChildrenVisualization(player, areaId) {
             id: visualizationIds,
             timerId: setTimeout(() => {
                 clearAreaVisualization(player);
+                // player.tell("§7区域可视化已自动关闭"); // 自动关闭时通常不提示
             }, duration * 1000) // 转换为毫秒
         };
 
         // 提示信息
-        let message = `§b已显示 §e${totalDrawnCount} §b个区域轮廓 (主区域及最多两级子区域)`;
+        let message = `§b已显示主区域轮廓`;
+        if (subAreaCount > 0) {
+            message += ` 和 §e${subAreaCount} §b个子区域轮廓`;
+        }
         message += `，将在§e${duration}秒§b后自动消失`;
         player.tell(message);
 

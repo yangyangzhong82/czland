@@ -1,5 +1,5 @@
-// 导入新增的 checkOverlapWithRestrictedZones 函数
-const { isInArea, checkNewAreaOverlap ,checkAreaSizeLimits, calculateAreaVolume, checkPlayerAreaLimits, checkOverlapWithRestrictedZones } = require('./utils');
+
+const { isInArea, checkNewAreaOverlap ,checkAreaSizeLimits} = require('./utils');
 const { calculateAreaPrice, handleAreaPurchase } = require('./economy');
 const { loadConfig } = require('./configManager'); // 引入 loadConfig
 const {logDebug, logInfo, logWarning, logError } = require('./logger');
@@ -91,55 +91,39 @@ function showCreateAreaForm(pl, point1, point2, areaData, playerData, saveAreaDa
             player.tell("§c区域名称不能为空！");
             return;
         }
-
+        
+        // 添加区域数量检查
         const { isAreaAdmin } = require('./areaAdmin');
+        const { countPlayerAreas } = require('./utils');
+        // const { loadConfig } = require('./configManager'); // 已在上面加载
         // const config = loadConfig(); // 已在上面加载
 
-        // 1. 检查区域大小限制 (针对单个区域)
-        const sizeCheck = checkAreaSizeLimits(point1, point2, config, false, 0); // 主区域深度为 0
+        // 区域管理员无视限制
+        if (!isAreaAdmin(player.uuid) && config.maxAreasPerPlayer !== -1) {
+            const ownedAreas = countPlayerAreas(player.xuid, areaData);
+            if (ownedAreas >= config.maxAreasPerPlayer) {
+                player.tell(`§c你已达到最大区域数量限制 (${config.maxAreasPerPlayer})！请删除一些现有区域后再创建新的。`);
+                return;
+            }
+        }
+        const newArea = {
+            point1: { ...point1 },
+            point2: { ...point2 },
+            dimid: point1.dimid
+        };
+        const sizeCheck = checkAreaSizeLimits(point1, point2, config, false);
+    
         if (!sizeCheck.valid) {
             pl.tell(`§c无法创建区域: ${sizeCheck.message}`);
             return;
         }
-
-        // 1.5. 检查新区域是否与禁止区域重叠 (新检查)
-        const restrictedZoneCheck = checkOverlapWithRestrictedZones(
-            { point1: { ...point1 }, point2: { ...point2 }, dimid: point1.dimid }, // 传递新区域的几何信息
-            config.restrictedZones || [] // 从配置中获取禁止区域列表
-        );
-        if (restrictedZoneCheck.overlapped) {
-            player.tell(`§c无法在此处创建区域：该区域与禁止区域 "${restrictedZoneCheck.overlappingZone.name || '未命名'}" 重叠！`);
-            return;
-        }
-
-        // 2. 检查新区域是否与其他玩家区域重叠
-        // 创建一个临时的 newArea 对象用于重叠检查，但不包含所有最终数据
-        const tempNewAreaForOverlap = {
-            point1: { ...point1 },
-            point2: { ...point2 },
-            dimid: point1.dimid
-            // 不需要 name, xuid 等用于几何检查
-        };
-        // 注意：checkNewAreaOverlap 需要 spatialIndex，这里暂时假设 areaData 包含所有区域用于检查
-        // 如果使用了 spatialIndex，需要传递它
-        const overlapCheck = checkNewAreaOverlap(tempNewAreaForOverlap, areaData); // TODO: 确认 checkNewAreaOverlap 是否需要 spatialIndex
+        const overlapCheck = checkNewAreaOverlap(newArea, areaData);
         if(overlapCheck.overlapped) {
             player.tell(`§c无法创建区域：与现有区域 "${overlapCheck.overlappingArea.name}" 重叠！`);
             return;
         }
 
-        // 3. 检查玩家总区域数量和体积限制 (新检查)
-        // 区域管理员无视此限制
-        if (!isAreaAdmin(player.uuid)) {
-            const newAreaVolume = calculateAreaVolume(point1, point2);
-            const playerLimitCheck = checkPlayerAreaLimits(player.xuid, 0, newAreaVolume, areaData, config); // 主区域深度为 0
-            if (!playerLimitCheck.valid) {
-                player.tell(`§c无法创建区域: ${playerLimitCheck.message}`);
-                return;
-            }
-        }
-
-        // --- 所有检查通过，继续处理经济和创建 ---
+        // --- 修改 handleAreaPurchase 调用 ---
         // 不再需要在回调中计算 price，因为上面已经计算过了
         const finalPrice = economyConfig.enabled ? calculateAreaPrice(point1, point2) : 0;
         if (!handleAreaPurchase(player, point1, point2, () => { // handleAreaPurchase 内部会重新计算价格并扣费

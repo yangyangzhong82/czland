@@ -1,7 +1,7 @@
 // mainForm.js
 const { loadAreaData, saveAreaData } = require('./config');
 const { getAreaData } = require('./czareaprotection');
-const { isInArea } = require('./utils'); // 不再需要 getAreaHierarchyPath
+const { isInArea } = require('./utils');
 const getOfflinePlayerData = ll.import("PlayerData", "getOfflinePlayerData");
 const { getPlayerCustomGroups, createCustomGroup, editCustomGroup, deleteCustomGroup, getAllCustomGroups } = require('./customGroups'); // Ensure getAllCustomGroups is imported if needed elsewhere, though getAvailableGroups uses it internally
 const { checkPermission, setPlayerPermission, getPlayerPermission, getAvailableGroups, getAreaDefaultGroup, setAreaDefaultGroup, resetCache, groupHasAdminPermissions } = require('./permission'); // Removed DEFAULT_GROUPS import, Added resetCache, groupHasAdminPermissions
@@ -11,7 +11,6 @@ const { calculateAreaPrice, handleAreaPurchase, handleAreaRefund } = require('./
 /// <reference path="d:\mc\插件/dts/HelperLib-master/src/index.d.ts"/>
 const { loadConfig } = require('./configManager');
 const { showSubAreaManageForm } = require('./subareaForms');
-const { setAreaTeleportPoint, teleportPlayerToArea } = require('./teleport'); // 引入传送点功能
 const {logDebug, logInfo, logWarning, logError } = require('./logger');
 
 
@@ -38,7 +37,7 @@ function showMainForm(player) {
 
 function handleCurrentArea(player) {
     const pos = player.pos;
-    const areaData = getAreaData(); // 修正：添加分号
+    const areaData = getAreaData()
     const { getPriorityAreasAtPosition } = require('./utils');
     const { buildSpatialIndex } = require('./spatialIndex');
 
@@ -66,42 +65,29 @@ function handleCurrentArea(player) {
     fm.setTitle("选择要管理的区域");
     fm.setContent("§e你当前位置有多个重叠的区域，请选择要管理的区域：");
 
-    // 添加区域按钮，只显示直接父区域（如果存在）
+    // 添加区域按钮
     for (let areaInfo of areasAtPos) {
         const area = areaInfo.area;
-        let buttonText = `§b${area.name || `区域...${areaInfo.id.substring(areaInfo.id.length - 4)}`}`; // 默认显示区域自身名称
-        const iconPath = "textures/ui/map_icon"; // 统一使用默认图标
+        let buttonText = `${area.name}`;
+        let iconPath = "textures/ui/map_icon"; // 更新地图图标
 
-        // 如果是子区域，在前面加上父区域名称
+        // 如果是子区域，显示父区域信息
         if (areaInfo.isSubarea && areaInfo.parentAreaId) {
             const parentArea = areaData[areaInfo.parentAreaId];
             if (parentArea) {
-                const parentName = parentArea.name || `区域...${areaInfo.parentAreaId.substring(areaInfo.parentAreaId.length - 4)}`;
-                buttonText = `§b${parentName} / ${area.name || `区域...${areaInfo.id.substring(areaInfo.id.length - 4)}`}`; // 格式：父区域 / 子区域
-            } else {
-                 buttonText = `§c[父区域未找到] / ${area.name || `区域...${areaInfo.id.substring(areaInfo.id.length - 4)}`}`;
+                buttonText += ` §7(${parentArea.name}的子区域)`;
+                iconPath = "textures/ui/icon_recipe_nature"; // 更新子区域图标
             }
         }
 
-        // 如果是主区域且有子区域，仍然显示提示 (附加到末尾)
-        // 注意：area.subareas 可能不是最新的，最好从 areaData 重新计算
-        let subAreaCount = 0;
-         if (!areaInfo.isSubarea) {
-            for (const subId in areaData) {
-                if (areaData[subId].isSubarea && areaData[subId].parentAreaId === areaInfo.id) {
-                    subAreaCount++;
-                }
-            }
-            if (subAreaCount > 0) {
-                 buttonText += ` §7(含${subAreaCount}个子区域)`;
-            }
-         }
+        // 如果是主区域且有子区域，显示提示
+        if (!areaInfo.isSubarea && area.subareas && Object.keys(area.subareas).length > 0) {
+            buttonText += ` §7(含${Object.keys(area.subareas).length}个子区域)`;
+        }
 
-
-        // 所有按钮都使用统一图标
-        fm.addButton(buttonText, iconPath);
+        fm.addButton(buttonText, iconPath); // 添加带图标的按钮
     }
-    fm.addButton("§c返回", "textures/ui/cancel");
+    fm.addButton("§c返回", "textures/ui/cancel"); // 路径正确
 
     player.sendForm(fm, (player, id) => {
         if (id === null) {
@@ -123,18 +109,15 @@ function handleCurrentArea(player) {
 }
 
 function showAreaListForm(player, currentPage = 0, filter = "", dimFilters = [], ownerFilters = []) {
-    // 收集玩家拥有的区域 (只显示顶层区域或玩家直接拥有的子区域)
+    // 收集玩家拥有的区域
     const areaData = getAreaData();
-    let displayableAreas = [];
+    let allAreas = [];
     for (let id in areaData) {
-        const area = areaData[id];
-        // 检查管理权限
+        // 使用正确的checkPermission调用
         if (checkPermission(player, areaData, id, "manage")) {
-            // 如果是顶层区域，或者玩家是这个子区域的主人，则添加到列表
-            // (或者根据需求调整：是否只显示顶层？)
-            // 当前逻辑：显示所有有管理权限的区域，无论层级
-            area.id = id; // 确保ID存在
-            displayableAreas.push(area);
+            let area = areaData[id];
+            area.id = id;
+            allAreas.push(area);
         }
     }
 
@@ -143,21 +126,12 @@ function showAreaListForm(player, currentPage = 0, filter = "", dimFilters = [],
     const playerMap = {};
     allPlayers.forEach(p => playerMap[p.uuid] = p.name);
 
-    // 根据搜索关键词过滤区域 (搜索区域名、ID、父区域名)
-    let filteredAreas = displayableAreas;
+    // 根据搜索关键词过滤区域
+    let filteredAreas = allAreas;
     if (filter.trim() !== "") {
-        const lowerFilter = filter.toLowerCase();
-        filteredAreas = filteredAreas.filter(area => {
-            const areaNameLower = (area.name || "").toLowerCase();
-            const areaIdLower = (area.id || "").toLowerCase();
-            let parentNameLower = "";
-            if (area.isSubarea && area.parentAreaId && areaData[area.parentAreaId]) {
-                parentNameLower = (areaData[area.parentAreaId].name || "").toLowerCase();
-            }
-            return areaNameLower.includes(lowerFilter) ||
-                   areaIdLower.includes(lowerFilter) ||
-                   (parentNameLower && parentNameLower.includes(lowerFilter)); // 也搜索父区域名
-        });
+        filteredAreas = filteredAreas.filter(area =>
+            (area.name || "").toLowerCase().includes(filter.toLowerCase()) ||
+            (area.id || "").toLowerCase().includes(filter.toLowerCase()));
     }
 
     // 根据维度过滤
@@ -219,37 +193,14 @@ function showAreaListForm(player, currentPage = 0, filter = "", dimFilters = [],
         const length = Math.abs(area.point2.z - area.point1.z) + 1;
         const size = width * height * length;
 
-        // 显示格式：父区域名 / 区域名 (如果适用)
-        let displayLabel = `§b${area.name || `区域...${area.id.substring(area.id.length - 4)}`}`;
-        if (area.isSubarea && area.parentAreaId) {
-             const parentArea = areaData[area.parentAreaId];
-             if (parentArea) {
-                 const parentName = parentArea.name || `区域...${area.parentAreaId.substring(area.parentAreaId.length - 4)}`;
-                 displayLabel = `§b${parentName} / ${area.name || `区域...${area.id.substring(area.id.length - 4)}`}`;
-             } else {
-                 displayLabel = `§c[父未找到] / ${area.name || `区域...${area.id.substring(area.id.length - 4)}`}`;
-             }
+        // 子区域信息
+        let subareaInfo = "";
+        if (area.subareas && Object.keys(area.subareas).length > 0) {
+            subareaInfo = `§7(含${Object.keys(area.subareas).length}个子区域)`;
         }
-
-
-        // 子区域数量信息 (直接从 areaData 查找)
-        let subAreaCount = 0; // 重置计数器
-        for (const subId in areaData) {
-            if (areaData[subId].isSubarea && areaData[subId].parentAreaId === area.id) {
-                subAreaCount++;
-            }
-        }
-        // 重新计算当前区域的子区域数量
-        for (const subId in areaData) {
-            if (areaData[subId].isSubarea && areaData[subId].parentAreaId === area.id) {
-                subAreaCount++;
-            }
-        }
-        const subareaInfo = subAreaCount > 0 ? ` §7(含${subAreaCount}个子区域)` : "";
-
 
         fm.addSwitch(
-            `${displayLabel} §r(ID: §7${area.id}§r)\n§7主人: §f${ownerName} §7| 维度: §f${dimName}\n§7大小: §f${width}×${height}×${length} §7(${size}方块)${subareaInfo}`,
+            `§b${area.name} §r(ID: §7${area.id}§r)\n§7主人: §f${ownerName} §7| 维度: §f${dimName}\n§7大小: §f${width}×${height}×${length} §7(${size}方块)${subareaInfo}`,
             false
         );
     }
@@ -336,9 +287,8 @@ function showAreaListForm(player, currentPage = 0, filter = "", dimFilters = [],
 
 // 添加 origin 参数，默认为 'main'
 function showAreaOperateForm(player, areaId, origin = 'main') {
-    const { confirmResizeArea, showRenameForm, confirmDeleteArea, showTransferAreaForm, showAreaRulesForm } = require('./OperationForms');
-    const { showPermissionManageForm, showGroupManageForm } = require('./permissionform');
-    const { loadConfig } = require('./configManager'); // 引入 loadConfig
+    const { confirmResizeArea,showRenameForm,confirmDeleteArea,showTransferAreaForm,showAreaRulesForm} = require('./OperationForms');
+    const { showPermissionManageForm,showGroupManageForm} = require('./permissionform');
     const areaData = getAreaData();
     const area = areaData[areaId];
     if (!area) {
@@ -364,7 +314,7 @@ function showAreaOperateForm(player, areaId, origin = 'main') {
     buttonHandlers.push(() => showAreaInfo(player, areaId, origin));
 
     // 检查 BSCI 是否可用，如果可用则添加按钮
-    const { isBsciReady, showAreaWithChildrenVisualization } = require('./bsci'); // 确保 bsci.js 在这里引入
+    const { isBsciReady, showAreaWithChildrenVisualization } = require('./bsci');
     if (isBsciReady()) {
         fm.addButton("显示区域轮廓", "textures/ui/world_glyph"); // 更新世界图标
         buttonHandlers.push(() => {
@@ -435,34 +385,6 @@ function showAreaOperateForm(player, areaId, origin = 'main') {
         // showSubAreaManageForm 需要接收 origin 并传递下去
         buttonHandlers.push(() => showSubAreaManageForm(player, areaId, origin));
     }
-
-    // --- 传送点功能 ---
-    const config = loadConfig(); // 加载配置以检查传送功能是否启用
-    if (config.teleport && config.teleport.enabled) {
-        // 设置传送点按钮 - 需要 MANAGE 权限
-        if (checkPermission(player, areaData, areaId, "MANAGE")) {
-            fm.addButton("设置传送点", "textures/items/ender_pearl"); // 末影珍珠图标
-            buttonHandlers.push(() => {
-                if (setAreaTeleportPoint(player, areaId)) {
-                    // 设置成功后可以重新显示表单，或者留在原地
-                    // player.tell("§a传送点设置成功！"); // teleport.js 内部已有提示
-                }
-                // 无论成功与否，都重新显示操作菜单以便继续操作
-                setTimeout(() => showAreaOperateForm(player, areaId, origin), 100); // 短暂延迟后显示
-            });
-        }
-
-        // 传送到此区域按钮 - 需要 teleport 权限
-        if (checkPermission(player, areaData, areaId, "teleport")) {
-            fm.addButton("传送到此区域", "textures/items/chorus_fruit"); // 紫颂果图标
-            buttonHandlers.push(() => {
-                teleportPlayerToArea(player, areaId);
-                // 传送后表单会自动关闭，不需要额外操作
-            });
-        }
-    }
-    // --- 传送点功能结束 ---
-
 
     // 添加返回按钮
     fm.addButton("§c返回", "textures/ui/cancel"); // 路径正确
@@ -578,18 +500,14 @@ function showAreaInfo(player, areaId, origin) {
     infoContent += `§l大小: §r${width}×${height}×${length} (${size}方块)\n`;
     infoContent += `§l优先级: §r${area.priority || 0}\n`; // 显示优先级
 
-    // 不再显示完整层级路径，只显示直接父区域（如果存在）
-    // const hierarchyPath = getAreaHierarchyPath(areaId, areaData, 3); // 获取最多3级
-    // infoContent += `§l层级路径: §r${hierarchyPath}\n`;
-
-    // 如果是子区域，明确显示直接父区域信息
+    // 如果是子区域，显示父区域信息
     if (area.isSubarea && area.parentAreaId) {
         const parentArea = areaData[area.parentAreaId];
         if (parentArea) {
-            const parentOwnerName = playerXuidMap[parentArea.xuid] || "未知";
-            infoContent += `§l直接父区域: §r${parentArea.name || `区域...${area.parentAreaId.substring(area.parentAreaId.length - 4)}`} §7(ID: ${area.parentAreaId}, 主人: ${parentOwnerName})\n`;
+            const parentOwnerName = playerMap[parentArea.xuid] || "未知";
+            infoContent += `§l父区域: §r${parentArea.name} §7(ID: ${area.parentAreaId}, 主人: ${parentOwnerName})\n`;
         } else {
-            infoContent += `§l直接父区域: §c未找到 (ID: ${area.parentAreaId})\n`;
+            infoContent += `§l父区域: §c未找到 (ID: ${area.parentAreaId})\n`;
         }
     }
 
@@ -714,20 +632,21 @@ function showAreaInfo(player, areaId, origin) {
         infoContent += "  §7无\n";
     }
 
-    // 显示直接子区域列表
-    infoContent += "\n§l--- 直接子区域列表 ---§r\n";
-    let directSubAreaCount = 0;
+    // 显示子区域列表
+    infoContent += "\n§l--- 子区域列表 ---§r\n";
+    let subAreaCount = 0;
+    // 假设 area.subareas 存在且是 { subAreaId: true } 或类似结构
+    // 需要遍历 areaData 找到 parentAreaId 是当前 areaId 的区域
     for (const subId in areaData) {
         const subArea = areaData[subId];
         if (subArea.isSubarea && subArea.parentAreaId === areaId) {
-            const subOwnerName = playerXuidMap[subArea.xuid] || "未知";
-            // 显示子区域自己的名字，而不是完整路径
-            infoContent += `  §f${subArea.name || `区域...${subId.substring(subId.length - 4)}`} §7(ID: ${subId}, 主人: ${subOwnerName})\n`;
-            directSubAreaCount++;
+            const subOwnerName = playerXuidMap[subArea.xuid] || "未知"; // 子区域主人也用 XUID 映射
+            infoContent += `§f${subArea.name} §7(ID: ${subId}, 主人: ${subOwnerName})\n`;
+            subAreaCount++;
         }
     }
-     if (directSubAreaCount === 0) {
-        infoContent += "  §7无直接子区域\n";
+     if (subAreaCount === 0) {
+        infoContent += "§7无子区域\n";
     }
 
 
