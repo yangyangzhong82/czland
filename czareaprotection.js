@@ -114,9 +114,9 @@ function checkPlayerArea(pl) {
         if(areaAllowsActionBar && settings.displayActionBar) {
             // --- 调试日志 ---
             try {
-                logDebug(`[AreaCheck] Player ${pl.name} at (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}, dim ${pos.dimid})`);
-                logDebug(`[AreaCheck] Areas at pos (sorted): ${areasAtPos.map(a => `${a.id}(${a.area.name}, depth ${a.depth})`).join('; ')}`);
-                logDebug(`[AreaCheck] Priority Area Selected: ${priorityArea.id}(${priorityArea.area.name}, depth ${priorityArea.depth})`);
+                //logDebug(`[AreaCheck] Player ${pl.name} at (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}, dim ${pos.dimid})`);
+                //logDebug(`[AreaCheck] Areas at pos (sorted): ${areasAtPos.map(a => `${a.id}(${a.area.name}, depth ${a.depth})`).join('; ')}`);
+                //logDebug(`[AreaCheck] Priority Area Selected: ${priorityArea.id}(${priorityArea.area.name}, depth ${priorityArea.depth})`);
             } catch (e) {
                 logError(`Error during area check debug logging: ${e.message}`);
             }

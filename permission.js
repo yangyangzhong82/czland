@@ -43,9 +43,20 @@ function groupHasAdminPermissions(group) {
 // 获取玩家名称（带缓存）
 function getPlayerNameCached(uuid) {
     if (!playerNameCache[uuid]) {
-        const playerData = getOfflinePlayerData(uuid);
-        playerNameCache[uuid] = playerData ? playerData.name : null;
-        // 可以添加时间戳和 TTL 清理逻辑，但对于玩家名称，通常不需要频繁更新
+        logDebug(`[getPlayerNameCached] 缓存未命中，尝试获取 UUID: ${uuid} 的名称`);
+        const playerDataResult = getOfflinePlayerData(uuid); // 重命名以示区分
+        logDebug(`[getPlayerNameCached] getOfflinePlayerData(${uuid}) 返回: ${playerDataResult ? JSON.stringify(playerDataResult) : 'null'}`);
+
+        // 检查返回的是否为非空数组，并从中提取名称
+        if (Array.isArray(playerDataResult) && playerDataResult.length > 0 && playerDataResult[0].name) {
+            playerNameCache[uuid] = playerDataResult[0].name; // 从数组的第一个元素获取名称
+            logDebug(`[getPlayerNameCached] 成功从结果中提取名称: ${playerNameCache[uuid]}`);
+        } else {
+            playerNameCache[uuid] = null; // 如果数据无效或名称缺失，则设为 null
+            logDebug(`[getPlayerNameCached] 未能从结果中提取有效名称`);
+        }
+    } else {
+        logDebug(`[getPlayerNameCached] 缓存命中 UUID: ${uuid}, 名称: ${playerNameCache[uuid]}`);
     }
     return playerNameCache[uuid];
 }
@@ -58,9 +69,12 @@ function getAvailableGroups() {
     try {
         // loadCustomGroups 返回格式为 { uuid: { groupName: groupDetails } }
         const allPlayerGroups = loadCustomGroups(); // 使用 loadCustomGroups()
+        logDebug(`[getAvailableGroups] loadCustomGroups 返回 ${Object.keys(allPlayerGroups).length} 个玩家的组`); // <-- 添加日志
 
         for (const creatorUuid in allPlayerGroups) {
             const creatorName = getPlayerNameCached(creatorUuid) || '未知玩家'; // 获取创建者名称
+            // <-- 添加日志 v
+            logDebug(`[getAvailableGroups] 处理 creatorUuid: ${creatorUuid}, 获取到的 creatorName: ${creatorName}`);
             for (const groupName in allPlayerGroups[creatorUuid]) {
                 const groupDetails = allPlayerGroups[creatorUuid][groupName];
                 // 使用 groupName 和 creatorUuid 创建唯一键
@@ -69,9 +83,11 @@ function getAvailableGroups() {
                 availableGroups[uniqueKey] = {
                     ...groupDetails, // 复制组详情
                     creatorUuid: creatorUuid,
-                    creatorName: creatorName,
+                    creatorName: creatorName, // 使用获取到的名字或 '未知玩家'
                     originalGroupName: groupName // 保存原始组名，因为键现在是组合的
                 };
+                 // <-- 添加日志 v
+                 logDebug(`[getAvailableGroups] 添加组: uniqueKey=${uniqueKey}, name=${groupDetails.name}, creatorName=${creatorName}`);
             }
         }
 
@@ -84,7 +100,7 @@ function getAvailableGroups() {
         availableGroups = {}; // 出错时返回空对象
     }
 
-    logDebug(`可用的自定义权限组列表 (含创建者信息): ${Object.keys(availableGroups).length} 个`);
+    logDebug(`[getAvailableGroups] 最终返回 ${Object.keys(availableGroups).length} 个可用的自定义权限组`); // <-- 修改日志
     return availableGroups; // 返回包含创建者信息的对象，键是唯一的
 }
 

@@ -39,6 +39,12 @@ const DEFAULT_CONFIG = {
             b: 0,
             a: 255
         },
+        subAreaLevel2Color: {  // 新增：二级子区域轮廓颜色
+            r: 148,
+            g: 0,
+            b: 211,
+            a: 255
+        },
         selectionPointColor: { // 选点时显示的颜色
             r: 0,
             g: 255,

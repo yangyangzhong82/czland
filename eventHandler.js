@@ -587,6 +587,54 @@ iListenAttentively.emplaceListener(
     iListenAttentively.EventPriority.High // 保持高优先级以确保先执行权限检查
 );
 
+iListenAttentively.emplaceListener(
+    "ila::mc::world::actor::MobHurtEffectBeforeEvent",
+    event => {
+                if (!event["source"]) {
+                    logDebug("药水伤害事件缺少来源信息，允许事件继续。");
+                    return; // 如果没有来源信息，默认允许
+                }
+        
+        const targetEntity = iListenAttentively.getActor(event["self"]); 
+        const sourceActor = iListenAttentively.getActor(event["source"]); 
+
+        if (!sourceActor || !sourceActor.isPlayer()) {
+            return; 
+        }
+
+        const player = sourceActor.toPlayer(); 
+
+        if (!targetEntity) {
+            logWarning(`MobHurtEffectBeforeEvent: 无法获取目标实体 for player ${player.name}`);
+            event["cancelled"] = true; 
+            return;
+        }
+
+        const pos = targetEntity.pos; 
+
+        // 检查位置是否有效
+        if (!pos || pos.x === undefined || pos.y === undefined || pos.z === undefined || pos.dimid === undefined) {
+            logWarning(`MobHurtEffectBeforeEvent: 目标实体位置无效 for player ${player.name}`);
+            event["cancelled"] = true; 
+            return;
+        }
+
+        logDebug(`玩家 ${player.name} 尝试对实体 ${targetEntity.type} (${targetEntity.uniqueId}) 造成魔法伤害 at (${pos.x}, ${pos.y}, ${pos.z})，检查攻击权限`);
+
+        // 复用 handleAttackPermission 函数检查权限
+        const hasPermission = handleAttackPermission(player, targetEntity);
+
+        if (!hasPermission) {
+            logDebug(`玩家 ${player.name} 对实体 ${targetEntity.type} 的魔法伤害权限不足，操作被阻止`);
+            event["cancelled"] = true; // 权限不足，拦截事件 (阻止魔法伤害)
+            // 注意：handleAttackPermission 内部可能会发送提示消息，这里不再重复发送
+        } else {
+            logDebug(`玩家 ${player.name} 允许对实体 ${targetEntity.type} 造成魔法伤害`);
+            // 权限足够，不需要设置 event["cancelled"] = false，默认不拦截
+        }
+    },
+    iListenAttentively.EventPriority.Highest // 使用最高优先级确保在其他效果前检查
+);
 /**
  * 跟踪玩家位置并处理区域进入权限
  * @param {Player} player - 要检查的玩家

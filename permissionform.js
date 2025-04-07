@@ -1,10 +1,9 @@
-
 const { loadAreaData, saveAreaData } = require('./config');
 const { getAreaData, updateAreaData } = require('./czareaprotection'); // Added updateAreaData
 const { isInArea, isAreaWithinArea, checkNewAreaOverlap, checkAreaSizeLimits } = require('./utils'); // Added utils functions
 const getOfflinePlayerData = ll.import("PlayerData", "getOfflinePlayerData");
-const { getPlayerCustomGroups, createCustomGroup, editCustomGroup, deleteCustomGroup, getAllCustomGroups } = require('./customGroups'); // Ensure getAllCustomGroups is imported if needed elsewhere, though getAvailableGroups uses it internally
-const { checkPermission, setPlayerPermission, getPlayerPermission, getAvailableGroups, getAreaDefaultGroup, setAreaDefaultGroup, resetCache } = require('./permission'); // Removed DEFAULT_GROUPS import, Added resetCache
+const { getPlayerCustomGroups, createCustomGroup, editCustomGroup, deleteCustomGroup } = require('./customGroups'); // Removed getAllCustomGroups as getAvailableGroups is used
+const { checkPermission, setPlayerPermission, getPlayerPermission, getAvailableGroups, getAreaDefaultGroup, setAreaDefaultGroup, resetCache, getSystemDefaultPermissions, groupHasAdminPermissions } = require('./permission'); // Added getSystemDefaultPermissions, groupHasAdminPermissions
 const { getPlayerData } = require('./playerDataManager');
 const { calculateAreaPrice, handleAreaPurchase, handleAreaRefund, getPlayerBalance, reducePlayerBalance, addPlayerBalance } = require('./economy'); // Added economy functions
 // LiteLoader-AIDS automatic generated
@@ -12,6 +11,8 @@ const { calculateAreaPrice, handleAreaPurchase, handleAreaRefund, getPlayerBalan
 const { loadConfig } = require('./configManager');
 const { showSubAreaManageForm } = require('./subareaForms');
 const {logDebug, logInfo, logWarning, logError } = require('./logger');
+const { getDbSession } = require('./database'); // Added database import
+
 // 添加 origin 参数
 function showPermissionManageForm(player, areaId, origin) {
     const { showAreaOperateForm} = require('./mainForm');
@@ -25,10 +26,11 @@ function showPermissionManageForm(player, areaId, origin) {
 
     const fm = mc.newSimpleForm();
     fm.setTitle(`§e[czland]§l${area.name} - §0权限管理`);
-    fm.addButton("添加成员", "textures/ui/Add-Ons_Nav_Icon36x36"); // 更新加号图标
-    fm.addButton("查看成员列表", "textures/ui/multiplayer_glyph_color"); // 更新多人图标
-    fm.addButton("设置默认权限组", "textures/ui/settings_glyph_color_2x"); // 更新设置图标
-    fm.addButton("§c返回", "textures/ui/cancel"); // 路径正确
+    fm.addButton("添加成员", "textures/ui/Add-Ons_Nav_Icon36x36"); // 0
+    fm.addButton("查看/编辑特定成员", "textures/ui/multiplayer_glyph_color"); // 1 - 重命名，功能不变
+    fm.addButton("管理所有玩家权限", "textures/ui/icon_setting"); // 2 - 新增按钮
+    fm.addButton("设置默认权限组", "textures/ui/settings_glyph_color_2x"); // 3
+    fm.addButton("§c返回", "textures/ui/cancel"); // 4
 
 
     player.sendForm(fm, (player, id) => {
@@ -39,16 +41,19 @@ function showPermissionManageForm(player, areaId, origin) {
 
         switch (id) {
             case 0:
-                showAddMemberForm(player, areaId, origin); // 传递 origin
+                showAddMemberForm(player, areaId, origin);
                 break;
-            case 1:
-                showMemberListForm(player, areaId, origin); // 传递 origin
+            case 1: // 查看/编辑特定成员
+                showMemberListForm(player, areaId, origin); // 跳转到只显示特定权限成员的列表
                 break;
-            case 2:
-                showAreaDefaultGroupForm(player, areaId, origin); // 传递 origin
+            case 2: // 管理所有玩家权限
+                showAllPlayersPermissionForm(player, areaId, origin); // 跳转到新表单
                 break;
-            case 3:
-                showAreaOperateForm(player, areaId, origin); // 返回按钮
+            case 3: // 设置默认权限组
+                showAreaDefaultGroupForm(player, areaId, origin);
+                break;
+            case 4: // 返回
+                showAreaOperateForm(player, areaId, origin);
                 break;
         }
     });
@@ -101,21 +106,41 @@ function showAddMemberForm(player, areaId, origin, currentPage = 0, filter = "")
     const backSwitchIndex = pageSliderIndex + 1; // 新增返回开关索引
 
     // 权限组选择，获取所有可用组并过滤
-    const { getAvailableGroups, groupHasAdminPermissions } = require('./permission'); // Import necessary functions
     const allAvailableGroups = getAvailableGroups(); // 获取所有组 { uniqueKey: groupDetails }
+    logDebug(`[showAddMemberForm] getAvailableGroups 返回 ${Object.keys(allAvailableGroups).length} 个组`); // <-- 添加日志
 
+    // --- 修改开始 ---
     // 过滤可选的权限组
-    // 规则：玩家有 grantAdminPermissions 权限，或者该组不包含管理权限
+    // 规则 1: 必须是当前玩家或区域主人创建的组
+    // 规则 2: 玩家有 grantAdminPermissions 权限，或者该组不包含管理权限
     const filteredGroupEntries = Object.entries(allAvailableGroups) // [ [uniqueKey, groupDetails], ... ]
-        .filter(([uniqueKey, group]) => hasAdminRight || !groupHasAdminPermissions(group)); // 使用更新后的 groupHasAdminPermissions
+        .filter(([uniqueKey, group]) => {
+            const isCreatorSelf = group.creatorUuid === player.uuid;
+            // 注意：area.xuid 是 XUID，而 group.creatorUuid 是 UUID。需要转换或确认 area 对象是否有 ownerUuid
+            // 假设 area 对象上有 ownerUuid 属性，如果没有，需要从其他地方获取。
+            const areaOwnerUuid = area.ownerUuid || null; // 假设 area 对象有 ownerUuid
+            const isCreatorOwner = areaOwnerUuid && group.creatorUuid === areaOwnerUuid;
+
+            const isOwnOrOwnerGroup = isCreatorSelf || isCreatorOwner;
+
+            const canSelectGroup = hasAdminRight || !groupHasAdminPermissions(group);
+
+            return isOwnOrOwnerGroup && canSelectGroup;
+        });
+    // <-- 添加日志 v
+    logDebug(`[showAddMemberForm] 过滤后剩下 ${filteredGroupEntries.length} 个组可供选择: ${JSON.stringify(filteredGroupEntries.map(([key, grp]) => ({ key: key, name: grp.name, creator: grp.creatorName })))}`);
+    // --- 修改结束 ---
+
 
     // 准备下拉列表的显示文本和对应的 uniqueKey
     const groupOptions = filteredGroupEntries.map(([uniqueKey, group]) => ({
         text: `${group.name} (${group.originalGroupName}) [§b${group.creatorName}§r]`, // 显示名称 (原始组名) [创建者]
         key: uniqueKey // 保存唯一键
     }));
+    // <-- 添加日志 v
+    logDebug(`[showAddMemberForm] 生成的下拉菜单选项 (groupOptions): ${JSON.stringify(groupOptions)}`);
 
-    fm.addDropdown("选择权限组", groupOptions.length > 0 ? groupOptions.map(o => o.text) : ["无可用权限组"]); // index groupDropdownIndex
+    fm.addDropdown("选择权限组", groupOptions.length > 0 ? groupOptions.map(o => o.text) : ["无可用权限组"], 0); // index groupDropdownIndex, 默认选第一个
 
     // 完成选择开关
     fm.addSwitch("确认添加", false); // index confirmSwitchIndex
@@ -198,6 +223,7 @@ function showAddMemberForm(player, areaId, origin, currentPage = 0, filter = "")
 
             if (added > 0) {
                 player.tell(`§a成功为 ${added} 个成员设置权限组: ${selectedGroupDetails.name}`);
+                resetCache(); // 清理缓存
             } else if (selectedPlayerCount > 0) {
                  // If players were selected but none were added successfully
                  player.tell(`§c未能成功为任何选定成员设置权限组。`);
@@ -211,18 +237,20 @@ function showAddMemberForm(player, areaId, origin, currentPage = 0, filter = "")
             return;
         }
 
-        player.tell("§e请选择玩家，选择权限组，并确认添加。");
-        showAddMemberForm(player, areaId, origin, currentPage, filter); // 重新显示表单
+        // 如果没有确认，但有操作（如翻页或搜索），则不提示此消息
+        if (newPage === currentPage && keyword === filter && !confirmed) {
+            player.tell("§e请选择玩家，选择权限组，并确认添加。");
+            showAddMemberForm(player, areaId, origin, currentPage, filter); // 重新显示表单
+        }
     });
 }
 
-// 显示成员列表表单 - 添加 origin 参数
-function showMemberListForm(player, areaId, origin) {
-    const areaData = getAreaData(); // Keep this
-    const area = areaData[areaId]; // Keep this
+// 显示成员列表表单 (只显示有特定权限的) - 改为 CustomForm 样式 - 添加 origin 参数
+function showMemberListForm(player, areaId, origin, currentPage = 0, filter = "") {
+    const areaData = getAreaData();
+    const area = areaData[areaId];
 
-    // Get player-specific permissions directly from DB
-    const { getDbSession } = require('./database');
+    // 1. 获取特定权限玩家
     const permissions = {}; // { uuid: groupName }
     try {
         const db = getDbSession();
@@ -242,72 +270,208 @@ function showMemberListForm(player, areaId, origin) {
         return;
     }
 
+    const memberUuidsWithPerms = Object.keys(permissions);
 
-    const fm = mc.newSimpleForm();
-    fm.setTitle(`${area.name} - 成员列表`);
-
-    // 获取所有玩家数据用于显示名称
-    const allPlayers = getOfflinePlayerData() || [];
+    // 2. 获取所有玩家数据用于名称查找
+    const allPlayersData = getOfflinePlayerData() || [];
     const playerMap = {};
-    allPlayers.forEach(p => playerMap[p.uuid] = p.name);
+    allPlayersData.forEach(p => playerMap[p.uuid] = p.name);
 
-    // 获取所有自定义组用于显示名称和创建者
+    // 3. 获取所有自定义组用于显示名称和创建者
     const allAvailableGroups = getAvailableGroups(); // { uniqueKey: groupDetails }
 
+    // 4. 过滤玩家
+    let filteredMemberUuids = memberUuidsWithPerms;
+    if (filter.trim() !== "") {
+        const lowerCaseFilter = filter.toLowerCase();
+        filteredMemberUuids = memberUuidsWithPerms.filter(uuid => {
+            const name = playerMap[uuid] || '';
+            return name.toLowerCase().includes(lowerCaseFilter);
+        });
+    }
 
-    // Store UUIDs in order to map button ID back to UUID
-    const memberUuids = [];
+    // 5. 分页设置
+    const pageSize = 5;
+    const totalMembers = filteredMemberUuids.length;
+    const totalPages = Math.max(1, Math.ceil(totalMembers / pageSize));
+    currentPage = Math.min(currentPage, totalPages - 1); // 确保页码有效
 
-    // 显示所有成员 (using the loaded `permissions`)
-    for (let uuid in permissions) {
-        const groupName = permissions[uuid]; // 这是原始组名
-        const playerName = playerMap[uuid] || `未知UUID(${uuid.substring(0,8)}...)`;
+    const startIndex = currentPage * pageSize;
+    const endIndex = Math.min(startIndex + pageSize, totalMembers);
+    const pageMemberUuids = filteredMemberUuids.slice(startIndex, endIndex);
 
-        // 尝试找到对应的权限组详细信息（需要遍历 allAvailableGroups）
-        let groupDisplayName = groupName; // 默认显示原始组名
-        let creatorInfo = "";
-        for (const key in allAvailableGroups) {
-            const groupDetails = allAvailableGroups[key];
-            if (groupDetails.originalGroupName === groupName) {
-                // 假设我们只关心第一个匹配到的（如果存在多个同名组）
-                // 或者，如果数据库保证了 playerUuid + areaId -> groupName 是唯一的，
-                // 并且 groupName + creatorUuid 也是唯一的，那么这里应该能精确匹配
-                // 但更安全的方式是，setPlayerPermission 时也保存 creatorUuid
-                // 目前，我们先假设能通过原始组名找到一个代表性的组
-                groupDisplayName = groupDetails.name;
-                creatorInfo = ` [§b${groupDetails.creatorName}§r]`;
-                break; // 找到一个就跳出
+    // 6. 创建 CustomForm
+    const fm = mc.newCustomForm();
+    fm.setTitle(`${area.name} - 查看/编辑成员`); // 更新标题
+
+    // 7. 添加搜索框
+    fm.addInput("搜索成员", "输入玩家名称", filter); // index 0
+
+    // 8. 添加玩家列表 (使用 Switch 模拟按钮)
+    const playerStartIndex = 1; // 开关从索引 1 开始
+    if (pageMemberUuids.length === 0) {
+        fm.addLabel("§7没有找到符合条件的成员。");
+    } else {
+        for (const uuid of pageMemberUuids) {
+            const groupName = permissions[uuid]; // 这是原始组名
+            const playerName = playerMap[uuid] || `未知UUID(${uuid.substring(0, 8)}...)`;
+
+            // 查找权限组显示名称和创建者
+            let groupDisplayName = groupName;
+            let creatorInfo = "";
+            for (const key in allAvailableGroups) {
+                const groupDetails = allAvailableGroups[key];
+                if (groupDetails.originalGroupName === groupName && groupDetails.creatorUuid) {
+                    const targetKey = `${groupName}_${groupDetails.creatorUuid}`;
+                    const foundGroup = allAvailableGroups[targetKey];
+                    if (foundGroup) {
+                        groupDisplayName = foundGroup.name;
+                        creatorInfo = ` [§b${foundGroup.creatorName}§r]`;
+                        break;
+                    }
+                } else if (groupDetails.originalGroupName === groupName) {
+                    groupDisplayName = groupDetails.name;
+                    creatorInfo = ` [§b${groupDetails.creatorName}§r]`;
+                }
             }
+            if (!creatorInfo && groupName) { // 如果没找到创建者但有组名
+                 creatorInfo = " [§c未知§r]";
+            }
+
+            fm.addSwitch(`${playerName}\n§r§7权限组: ${groupDisplayName}${creatorInfo}`, false); // 使用 Switch
         }
-
-
-        fm.addButton(`${playerName}\n§r§7权限组: ${groupDisplayName}${creatorInfo}`, "textures/ui/icon_steve"); // 路径正确
-        memberUuids.push(uuid); // Store UUID corresponding to this button
     }
 
-    if (memberUuids.length === 0) {
-        fm.setContent("§7该区域尚无特定权限成员。");
+    // --- Correct Index Calculation ---
+    // Calculate the index *after* adding player elements
+    // --- Correct Index Calculation ---
+    // Calculate the index *after* adding player elements
+    const lastPlayerElementIndex = (pageMemberUuids.length > 0) ? playerStartIndex + pageMemberUuids.length - 1 : playerStartIndex; // Index of the last switch or the label if no players
+    const confirmEditSwitchIndex = lastPlayerElementIndex + 1; // 新增确认编辑开关索引
+    const pageSliderIndex = confirmEditSwitchIndex + 1;
+    const backSwitchIndex = pageSliderIndex + 1;
+    // --- End Correct Index Calculation ---
+
+    // 8.5 添加确认编辑按钮 (在玩家列表之后，分页器之前)
+    if (pageMemberUuids.length > 0) { // 只在有成员时显示确认按钮
+        fm.addSwitch("§a确认编辑选定成员", false); // Uses confirmEditSwitchIndex
+    } else {
+        // 如果没有成员，添加一个占位符或者不添加，以保持索引计算一致性
+        // 这里选择不添加，但需要在回调中处理 confirmEditSwitchIndex 可能不存在的情况
+        // 或者添加一个 Label 占位
+         fm.addLabel(""); // 添加一个空 Label 占位，确保后续索引正确
     }
 
-    fm.addButton("§c返回", "textures/ui/cancel"); // 路径正确
-    const backButtonIndex = memberUuids.length;
 
-    player.sendForm(fm, (player, id) => {
-        if (id === null) {
-            showPermissionManageForm(player, areaId, origin); // 取消返回
-            return;
-        }
+    // 9. 添加分页器
+    const pageItems = Array.from({ length: totalPages }, (_, i) => `第${i + 1}页`);
+    fm.addStepSlider("选择页码", pageItems, currentPage); // Uses pageSliderIndex
 
-        // 处理返回按钮
-        if (id === backButtonIndex) {
+    // 10. 添加返回按钮
+    fm.addSwitch("§c返回", false); // Uses backSwitchIndex
+
+    // 11. 发送表单并处理回调
+    player.sendForm(fm, (player, data) => {
+        if (data === null) {
             showPermissionManageForm(player, areaId, origin);
             return;
         }
 
-        // 点击成员可以修改或移除权限
-        if (id >= 0 && id < memberUuids.length) {
-            const targetUuid = memberUuids[id]; // Get UUID using the button index
-            showMemberEditForm(player, areaId, targetUuid, origin); // Pass UUID and origin
+        // --- Added Check for Undefined ---
+        if (data === undefined) {
+            logError(`[showMemberListForm Callback] Received undefined data for area ${areaId}`);
+            player.tell("§c处理表单时发生内部错误 (Data Undefined)，请重试。");
+            showPermissionManageForm(player, areaId, origin);
+            return;
+        }
+        // --- End Added Check ---
+
+        // --- More Robust Data Validation ---
+        if (!Array.isArray(data)) {
+            logError(`[showMemberListForm Callback] Received non-array data: ${JSON.stringify(data)}`);
+            player.tell("§c处理表单时发生内部错误 (Data Type)，请重试。");
+            showPermissionManageForm(player, areaId, origin);
+            return;
+        }
+
+        // Check if essential indices exist before using them for further checks/logic
+        if (data.length <= 0) { // Check for search input index
+            logError(`[showMemberListForm Callback] Received data array too short for search input (length ${data.length})`);
+            player.tell("§c处理表单时发生错误 (Data Short 1)，请重试。");
+            showPermissionManageForm(player, areaId, origin);
+            return;
+        }
+        const keyword = data[0].trim(); // Safe now
+
+        // Recalculate expected indices *inside* the callback for safety,
+        // using the same logic as when building the form.
+        const currentExpectedLastPlayerIndex = (pageMemberUuids.length > 0) ? playerStartIndex + pageMemberUuids.length - 1 : playerStartIndex;
+        const currentExpectedConfirmIndex = lastPlayerElementIndex + 1; // 确认按钮索引
+        const currentExpectedSliderIndex = currentExpectedConfirmIndex + 1;
+        const currentExpectedBackIndex = currentExpectedSliderIndex + 1;
+        const minimumExpectedLength = currentExpectedBackIndex + 1; // Need index up to currentExpectedBackIndex
+
+        // 检查数据长度是否足够包含所有预期控件
+        if (data.length < minimumExpectedLength) {
+            logError(`[showMemberListForm Callback] Received data array shorter than expected (length ${data.length}, expected at least ${minimumExpectedLength} based on ${pageMemberUuids.length} players on page)`);
+            player.tell("§c处理表单时发生错误 (Data Short 2)，请重试。");
+            showPermissionManageForm(player, areaId, origin);
+            return;
+        }
+        // --- End Robust Data Validation ---
+
+
+        // Now access using expected indices, which are confirmed to be within bounds
+        const confirmEditPressed = (pageMemberUuids.length > 0) ? data[currentExpectedConfirmIndex] : false; // 如果没成员，确认按钮不存在，视为 false
+        const newPage = data[currentExpectedSliderIndex];
+        const backButtonPressed = data[currentExpectedBackIndex];
+
+        if (backButtonPressed === true) {
+            showPermissionManageForm(player, areaId, origin);
+            return;
+        }
+
+
+        // 处理页面切换或搜索
+        if (newPage !== currentPage || keyword !== filter) {
+            showMemberListForm(player, areaId, origin, newPage, keyword);
+            return; // 优先处理返回
+        }
+
+        // 处理页面切换或搜索 (如果确认按钮没按)
+        if (!confirmEditPressed && (newPage !== currentPage || keyword !== filter)) {
+            showMemberListForm(player, areaId, origin, newPage, keyword);
+            return;
+        }
+
+        // 处理确认编辑操作
+        if (confirmEditPressed) {
+            let selectedPlayerUuid = null;
+            let selectedCount = 0;
+            if (pageMemberUuids.length > 0) {
+                for (let i = 0; i < pageMemberUuids.length; i++) {
+                    const switchIndex = playerStartIndex + i;
+                    if (data[switchIndex] === true) {
+                        selectedPlayerUuid = pageMemberUuids[i];
+                        selectedCount++;
+                    }
+                }
+            }
+
+            if (selectedCount === 1) {
+                // 如果确认编辑且只选择了一个玩家，跳转到编辑表单
+                showMemberEditForm(player, areaId, selectedPlayerUuid, origin);
+            } else if (selectedCount === 0) {
+                player.tell("§c请先选择一个成员，再点击确认编辑。");
+                showMemberListForm(player, areaId, origin, currentPage, filter); // 重新显示当前页
+            } else { // selectedCount > 1
+                player.tell("§c一次只能编辑一个成员，请取消多余的选择。");
+                showMemberListForm(player, areaId, origin, currentPage, filter); // 重新显示当前页
+            }
+        } else {
+             // 如果没有按确认，也不是翻页/搜索，则重新显示表单 (可能用户只是误触了某个开关)
+             // player.tell("§e请选择成员并点击确认编辑，或进行翻页/搜索。"); // 可以选择不提示
+             showMemberListForm(player, areaId, origin, currentPage, filter);
         }
     });
 }
@@ -333,27 +497,45 @@ function showMemberEditForm(player, areaId, targetUuid, origin) {
      if (currentGroup) {
          // 查找当前组的详细信息
          for (const key in allAvailableGroups) {
-             if (allAvailableGroups[key].originalGroupName === currentGroup) {
-                 currentGroupDetails = allAvailableGroups[key];
-                 currentGroupDisplay = `${currentGroupDetails.name} (${currentGroup}) [§b${currentGroupDetails.creatorName}§r]`;
-                 break;
+             const group = allAvailableGroups[key];
+             // 精确匹配原始组名和创建者UUID
+             if (group.originalGroupName === currentGroup && group.creatorUuid) {
+                  const targetKey = `${currentGroup}_${group.creatorUuid}`;
+                  const foundGroup = allAvailableGroups[targetKey];
+                  if(foundGroup){
+                       currentGroupDetails = foundGroup;
+                       currentGroupDisplay = `${foundGroup.name} (${currentGroup}) [§b${foundGroup.creatorName}§r]`;
+                       break;
+                  }
+             }
+             // Fallback 匹配
+             else if (group.originalGroupName === currentGroup) {
+                  currentGroupDetails = group; // 可能不精确
+                  currentGroupDisplay = `${group.name} (${currentGroup}) [§b${group.creatorName}§r]`;
+                  // Don't break, keep searching for a better match
              }
          }
          if (!currentGroupDetails) {
-             currentGroupDisplay = `${currentGroup} (未知组)`; // 如果找不到详情
+             currentGroupDisplay = `${currentGroup} (未知或系统组)`; // 如果找不到详情
          }
      }
      fm.addLabel(`当前权限组: ${currentGroupDisplay}`); // index 0
 
 
      // 权限组选择
-     // const playerGroups = getPlayerCustomGroups(player.uuid); // 不再需要只获取玩家的组
      const hasAdminRight = checkPermission(player, areaData, areaId, "grantAdminPermissions");
-     const { groupHasAdminPermissions } = require('./permission'); // 引入
 
      // 过滤规则：玩家有 grantAdminPermissions 权限，或者该组不包含管理权限
+     // + 必须是自己或区域主人创建的组 (与 addMember 保持一致)
+     const areaOwnerUuid = area.ownerUuid || null;
      const filteredGroupEntries = Object.entries(allAvailableGroups)
-         .filter(([uniqueKey, group]) => hasAdminRight || !groupHasAdminPermissions(group));
+         .filter(([uniqueKey, group]) => {
+             const isCreatorSelf = group.creatorUuid === player.uuid;
+             const isCreatorOwner = areaOwnerUuid && group.creatorUuid === areaOwnerUuid;
+             const isOwnOrOwnerGroup = isCreatorSelf || isCreatorOwner;
+             const canSelectGroup = hasAdminRight || !groupHasAdminPermissions(group);
+             return isOwnOrOwnerGroup && canSelectGroup;
+         });
 
      // 准备下拉列表选项
      const groupOptions = filteredGroupEntries.map(([uniqueKey, group]) => ({
@@ -369,11 +551,12 @@ function showMemberEditForm(player, areaId, targetUuid, origin) {
      if (currentGroupDetails) {
          // 查找当前组在过滤后的选项中的位置
          const currentUniqueKey = `${currentGroupDetails.originalGroupName}_${currentGroupDetails.creatorUuid}`;
+         // Find index in filteredGroupEntries, not groupOptions directly yet
          const idx = filteredGroupEntries.findIndex(([key, group]) => key === currentUniqueKey);
          if (idx !== -1) {
              currentGroupIndex = idx + 1; // +1 因为 "恢复默认" 在前面
          } else {
-             // 如果当前组不在可选列表中 (例如因为权限不足)，添加提示
+             // 如果当前组不在可选列表中 (例如因为权限不足或非自己/主人创建)，添加提示
              fm.addLabel(`§e注意: 当前权限组你无权重新设置，选择其他组将覆盖。`);
              // currentGroupIndex 保持为 0
          }
@@ -408,6 +591,7 @@ function showMemberEditForm(player, areaId, targetUuid, origin) {
              // Remove specific permission setting (reverts to default)
              if (setPlayerPermission(targetUuid, areaId, null)) {
                  player.tell(`§a已移除 ${targetName} 的特定权限设置，将使用区域默认权限。`);
+                 resetCache(); // 清理缓存
              } else {
                  player.tell(`§c移除 ${targetName} 的特定权限失败。`);
              }
@@ -431,7 +615,7 @@ function showMemberEditForm(player, areaId, targetUuid, origin) {
                  }
                  groupToSet = selectedGroupDetails.originalGroupName; // 获取原始组名
 
-                 // 再次验证权限
+                 // 再次验证权限 (理论上过滤已完成，保留更安全)
                  if (!hasAdminRight && groupHasAdminPermissions(selectedGroupDetails)) {
                      player.tell(`§c你没有权限将成员设置为管理类权限组 (${selectedGroupDetails.name})!`);
                      showMemberListForm(player, areaId, origin); // 返回列表
@@ -444,6 +628,7 @@ function showMemberEditForm(player, areaId, targetUuid, origin) {
              if (setPlayerPermission(targetUuid, areaId, groupToSet)) {
                  const groupDisplayName = groupToSet ? (selectedGroupDetails?.name || groupToSet) : '区域默认';
                  player.tell(`§a已将 ${targetName} 的权限设置为: ${groupDisplayName}`);
+                 resetCache(); // 清理缓存
              } else {
                  player.tell(`§c为 ${targetName} 设置权限失败。`);
              }
@@ -452,16 +637,265 @@ function showMemberEditForm(player, areaId, targetUuid, origin) {
      });
 }
 
+// --- 修改后函数：管理特定权限玩家 ---
+function showAllPlayersPermissionForm(player, areaId, origin, currentPage = 0, filter = "") {
+    const areaData = getAreaData();
+    const area = areaData[areaId];
+    const hasAdminRight = checkPermission(player, areaData, areaId, "grantAdminPermissions");
+
+    // 1. 获取拥有特定权限的玩家 UUID 和组名
+    const specificPermissions = {}; // { uuid: groupName }
+    try {
+        const db = getDbSession();
+        const stmt = db.prepare("SELECT playerUuid, groupName FROM permissions WHERE areaId = ?");
+        stmt.bind(areaId);
+        while (stmt.step()) {
+            const row = stmt.fetch();
+            if (row && row.playerUuid && row.groupName) {
+                specificPermissions[row.playerUuid] = row.groupName;
+            }
+        }
+        logDebug(`为区域 ${areaId} 的特定权限玩家列表查询到 ${Object.keys(specificPermissions).length} 条记录`);
+    } catch (e) {
+        logError(`在 showAllPlayersPermissionForm 中查询区域 ${areaId} 特定权限失败: ${e}`, e.stack);
+        player.tell("§c查询特定权限成员列表时出错！");
+        showPermissionManageForm(player, areaId, origin); // 返回上一级
+        return;
+    }
+
+    const playersWithSpecificPerms = Object.entries(specificPermissions).map(([uuid, groupName]) => ({ uuid, groupName })); // [{uuid, groupName}, ...]
+
+    // 2. 获取所有玩家数据用于名称查找
+    const allPlayersData = getOfflinePlayerData() || [];
+    const playerMap = {}; // { uuid: name }
+    allPlayersData.forEach(p => playerMap[p.uuid] = p.name);
+
+    // 3. 根据搜索关键词过滤玩家
+    let filteredPlayers = playersWithSpecificPerms;
+    if (filter.trim() !== "") {
+        const lowerCaseFilter = filter.toLowerCase();
+        filteredPlayers = playersWithSpecificPerms.filter(p => {
+            const name = playerMap[p.uuid] || '';
+            return name.toLowerCase().includes(lowerCaseFilter);
+        });
+    }
+
+    // 4. 分页设置
+    const pageSize = 5; // 每页显示5个玩家
+    const totalMembers = filteredPlayers.length;
+    const totalPages = Math.max(1, Math.ceil(totalMembers / pageSize));
+    currentPage = Math.min(currentPage, totalPages - 1); // 确保页码有效
+
+    const startIndex = currentPage * pageSize;
+    const endIndex = Math.min(startIndex + pageSize, totalMembers);
+    const pagePlayers = filteredPlayers.slice(startIndex, endIndex); // pagePlayers is now [{uuid, groupName}, ...]
+
+    // 5. 创建 CustomForm
+    const fm = mc.newCustomForm();
+    fm.setTitle(`${area.name} - 特定权限成员管理`); // 更新标题
+
+    // 6. 添加搜索框
+    fm.addInput("搜索特定权限成员", "输入玩家名称", filter); // index 0
+
+    // 7. 获取所有可用权限组用于显示名称
+    const allAvailableGroups = getAvailableGroups();
+
+    // 8. 添加玩家列表和权限显示
+    const playerStartIndex = 1; // 开关从索引 1 开始
+    const playerUuidsOnPage = []; // 存储当前页玩家的 UUID
+    if (pagePlayers.length === 0) {
+        fm.addLabel("§7没有找到符合条件的特定权限成员。");
+    } else {
+        for (const pData of pagePlayers) { // pData is {uuid, groupName}
+            playerUuidsOnPage.push(pData.uuid);
+            const playerName = playerMap[pData.uuid] || `未知UUID(${pData.uuid.substring(0, 8)}...)`;
+            const specificGroup = pData.groupName; // 直接使用从数据库获取的组名
+            let groupDisplayName = specificGroup; // 默认显示原始组名
+            let creatorInfo = "";
+
+            // 查找特定组的显示名称和创建者
+            for (const key in allAvailableGroups) {
+                const groupDetails = allAvailableGroups[key];
+                // 精确匹配
+                if (groupDetails.originalGroupName === specificGroup && groupDetails.creatorUuid) {
+                    const targetKey = `${specificGroup}_${groupDetails.creatorUuid}`;
+                    const foundGroup = allAvailableGroups[targetKey];
+                    if (foundGroup) {
+                        groupDisplayName = foundGroup.name;
+                        creatorInfo = ` [§b${foundGroup.creatorName}§r]`;
+                        break;
+                    }
+                }
+                // Fallback 匹配
+                else if (groupDetails.originalGroupName === specificGroup) {
+                    groupDisplayName = groupDetails.name;
+                    creatorInfo = ` [§b${groupDetails.creatorName}§r]`;
+                    // Don't break, keep searching for a better match
+                }
+            }
+             if (!creatorInfo && specificGroup) { // 如果没找到创建者但有组名
+                 creatorInfo = " [§c未知§r]";
+             }
+
+            fm.addSwitch(`${playerName}\n§r§7权限组: ${groupDisplayName}${creatorInfo}`, false); // 显示玩家名和其特定的权限组
+        }
+    }
+
+
+    // 9. 批量操作控件 (索引计算需要基于实际添加的元素)
+    const lastPlayerElementIndex = (pagePlayers.length > 0) ? playerStartIndex + pagePlayers.length - 1 : playerStartIndex; // Index of the last switch or the label if no players
+    const batchActionStartIndex = playerStartIndex + pagePlayers.length;
+    fm.addLabel("--- §6批量操作 (对上方选中的玩家生效) ---"); // index batchActionStartIndex
+
+    // 批量重置权限组下拉菜单 (只显示当前玩家自己的组)
+    const myGroupEntries = Object.entries(allAvailableGroups)
+        .filter(([key, group]) => group.creatorUuid === player.uuid && (hasAdminRight || !groupHasAdminPermissions(group))); // 过滤：自己的 + 权限允许
+
+    const myGroupOptions = myGroupEntries.map(([key, group]) => ({
+        text: `${group.name} (${group.originalGroupName})`,
+        key: key // uniqueKey
+    }));
+
+    const resetGroupDropdownIndex = batchActionStartIndex + 1;
+    fm.addDropdown("批量重置为我的权限组:", myGroupOptions.length > 0 ? myGroupOptions.map(o => o.text) : ["你没有可用的权限组"], 0); // index resetGroupDropdownIndex
+
+    const resetConfirmSwitchIndex = resetGroupDropdownIndex + 1;
+    fm.addSwitch("§e确认批量重置权限", false); // index resetConfirmSwitchIndex
+
+    const deleteConfirmSwitchIndex = resetConfirmSwitchIndex + 1;
+    fm.addSwitch("§c确认批量移除特定权限 (恢复默认)", false); // index deleteConfirmSwitchIndex
+
+    // 分页和返回
+    const pageSliderIndex = deleteConfirmSwitchIndex + 1;
+    const pageItems = Array.from({length: totalPages}, (_, i) => `第${i + 1}页`);
+    fm.addStepSlider("选择页码", pageItems, currentPage); // index pageSliderIndex
+
+    const backSwitchIndex = pageSliderIndex + 1;
+    fm.addSwitch("§c返回", false); // index backSwitchIndex
+
+    player.sendForm(fm, (player, data) => {
+        if (data === null) {
+            showPermissionManageForm(player, areaId, origin); // 取消返回
+            return;
+        }
+
+        // 检查返回开关
+        if (data[backSwitchIndex]) {
+            showPermissionManageForm(player, areaId, origin);
+            return;
+        }
+
+        const keyword = data[0].trim();
+        const newPage = data[pageSliderIndex];
+
+        // 处理页面切换或搜索
+        if (newPage !== currentPage || keyword !== filter) {
+            showAllPlayersPermissionForm(player, areaId, origin, newPage, keyword);
+            return;
+        }
+
+        // 处理批量操作
+        const selectedPlayerIndices = [];
+        for (let i = 0; i < pagePlayers.length; i++) {
+            if (data[playerStartIndex + i]) { // 检查开关是否被选中
+                selectedPlayerIndices.push(i);
+            }
+        }
+
+        const resetConfirmed = data[resetConfirmSwitchIndex];
+        const deleteConfirmed = data[deleteConfirmSwitchIndex];
+
+        if (selectedPlayerIndices.length === 0 && (resetConfirmed || deleteConfirmed)) {
+            player.tell("§c请至少选择一个玩家进行批量操作！");
+            showAllPlayersPermissionForm(player, areaId, origin, currentPage, filter);
+            return;
+        }
+
+        let operationPerformed = false;
+        let successCount = 0;
+        let failCount = 0;
+
+        // 优先处理删除操作
+        if (deleteConfirmed) {
+            operationPerformed = true;
+            player.tell(`§6开始批量移除 ${selectedPlayerIndices.length} 个玩家的特定权限...`);
+            for (const index of selectedPlayerIndices) {
+                const targetUuid = playerUuidsOnPage[index];
+                if (setPlayerPermission(targetUuid, areaId, null)) {
+                    successCount++;
+                } else {
+                    failCount++;
+                    logWarning(`批量移除玩家 ${targetUuid} 特定权限失败`);
+                }
+            }
+            if (successCount > 0) player.tell(`§a成功移除 ${successCount} 个玩家的特定权限。`);
+            if (failCount > 0) player.tell(`§c有 ${failCount} 个玩家的特定权限移除失败。`);
+            resetCache(); // 清理缓存
+        }
+        // 处理重置操作 (如果删除未执行或失败)
+        else if (resetConfirmed) {
+            operationPerformed = true;
+            if (myGroupOptions.length === 0) {
+                player.tell("§c你没有可用的权限组来执行批量重置！");
+                showAllPlayersPermissionForm(player, areaId, origin, currentPage, filter);
+                return;
+            }
+            const selectedMyGroupIndex = data[resetGroupDropdownIndex];
+            const selectedMyGroupOption = myGroupOptions[selectedMyGroupIndex];
+            if (!selectedMyGroupOption || !selectedMyGroupOption.key) {
+                player.tell("§c请选择一个有效的权限组进行重置！");
+                showAllPlayersPermissionForm(player, areaId, origin, currentPage, filter);
+                return;
+            }
+
+            const groupToSetDetails = allAvailableGroups[selectedMyGroupOption.key];
+            if (!groupToSetDetails) {
+                 player.tell("§c无法找到所选权限组的详细信息！");
+                 showAllPlayersPermissionForm(player, areaId, origin, currentPage, filter);
+                 return;
+            }
+            const groupToSet = groupToSetDetails.originalGroupName; // 获取原始组名
+
+            player.tell(`§6开始批量重置 ${selectedPlayerIndices.length} 个玩家的权限为: ${groupToSetDetails.name}...`);
+            for (const index of selectedPlayerIndices) {
+                const targetUuid = playerUuidsOnPage[index];
+                if (setPlayerPermission(targetUuid, areaId, groupToSet)) {
+                    successCount++;
+                } else {
+                    failCount++;
+                    logWarning(`批量重置玩家 ${targetUuid} 权限为 ${groupToSet} 失败`);
+                }
+            }
+            if (successCount > 0) player.tell(`§a成功重置 ${successCount} 个玩家的权限。`);
+            if (failCount > 0) player.tell(`§c有 ${failCount} 个玩家的权限重置失败。`);
+            resetCache(); // 清理缓存
+        }
+
+        // 如果执行了操作，刷新表单；否则提示
+        if (operationPerformed) {
+            showAllPlayersPermissionForm(player, areaId, origin, currentPage, filter); // 刷新当前页
+        } else if (!operationPerformed && (resetConfirmed || deleteConfirmed)) {
+             // This case should not happen if selection check is done right, but as a fallback
+             player.tell("§e请选择玩家并确认一项批量操作。");
+             showAllPlayersPermissionForm(player, areaId, origin, currentPage, filter);
+        } else if (!operationPerformed && !resetConfirmed && !deleteConfirmed) {
+             // No operation selected, just redisplay
+             // player.tell("§e请选择一项批量操作并确认。"); // Maybe too noisy
+             showAllPlayersPermissionForm(player, areaId, origin, currentPage, filter);
+        }
+    });
+}
+
 
 // 显示权限组管理主界面 - 添加 origin 参数
 function showGroupManageForm(player, areaId, origin) {
     const { showAreaOperateForm} = require('./mainForm');
     const fm = mc.newSimpleForm();
     fm.setTitle("权限组管理");
-    fm.addButton("创建新权限组", "textures/ui/pick_block"); // 路径正确
-    fm.addButton("管理现有权限组", "textures/ui/permissions_op_crown"); // 更新编辑图标
-    // fm.addButton("设置默认权限组"); // 这个功能移到 权限管理 菜单更合适
-    fm.addButton("§c返回", "textures/ui/cancel"); // 路径正确
+    fm.addButton("创建新权限组", "textures/ui/pick_block"); // 0
+    fm.addButton("管理现有权限组", "textures/ui/permissions_op_crown"); // 1
+    fm.addButton("查看权限组应用情况", "textures/ui/icon_map"); // 2 - 新增按钮
+    fm.addButton("§c返回", "textures/ui/cancel"); // 3
 
     player.sendForm(fm, (player, id) => {
         if(id === null) {
@@ -477,12 +911,11 @@ function showGroupManageForm(player, areaId, origin) {
                 showGroupListForm(player, areaId, origin); // 传递 areaId 和 origin
                 break;
             case 2:
-                // showDefaultGroupForm(player, areaId); // 这个入口已移除
+                showGroupUsageForm(player, areaId, origin); // 跳转到新表单
+                break;
+            case 3:
                 showAreaOperateForm(player, areaId, origin); // 返回按钮
                 break;
-            // case 3: // 原来的返回按钮
-            //     showAreaOperateForm(player, areaId, origin);
-            //     break;
         }
     });
 }
@@ -493,7 +926,7 @@ function showCreateGroupForm(player, areaId, origin) {
 
     const fm = mc.newCustomForm();
     fm.setTitle("创建权限组");
-    fm.addInput("权限组ID", "例如: vip"); // index 0
+    fm.addInput("权限组ID", "例如: vip (字母数字下划线)"); // index 0
     fm.addInput("显示名称", "例如: VIP会员"); // index 1
 
     fm.addLabel("§7注意：直接选择所有需要的权限"); // index 2
@@ -560,7 +993,7 @@ function showCreateGroupForm(player, areaId, origin) {
         // 创建自定义权限组
         if(createCustomGroup(player.uuid, groupId, displayName, permissions, null)) {
             player.tell(`§a权限组创建成功！\n§7包含权限: ${permissions.join(', ')}`);
-
+            resetCache(); // 清理缓存
             // 验证保存结果
             const groups = getPlayerCustomGroups(player.uuid);
             if(groups[groupId]) {
@@ -593,12 +1026,18 @@ function showAreaDefaultGroupForm(player, areaId, origin) {
     fm.setTitle("设置区域默认权限组");
 
     // 获取所有自定义权限组
-    const { getAvailableGroups, groupHasAdminPermissions } = require('./permission'); // 引入
     const allAvailableGroups = getAvailableGroups(); // { uniqueKey: groupDetails }
 
-    // 过滤可选的权限组
+    // 过滤可选的权限组 (自己或主人创建的，且权限允许)
+    const areaOwnerUuid = area.ownerUuid || null;
     const filteredGroupEntries = Object.entries(allAvailableGroups)
-        .filter(([uniqueKey, group]) => hasAdminRight || !groupHasAdminPermissions(group));
+        .filter(([uniqueKey, group]) => {
+             const isCreatorSelf = group.creatorUuid === player.uuid;
+             const isCreatorOwner = areaOwnerUuid && group.creatorUuid === areaOwnerUuid;
+             const isOwnOrOwnerGroup = isCreatorSelf || isCreatorOwner;
+             const canSelectGroup = hasAdminRight || !groupHasAdminPermissions(group);
+             return isOwnOrOwnerGroup && canSelectGroup;
+        });
 
     // 准备下拉列表选项
     const groupOptions = filteredGroupEntries.map(([uniqueKey, group]) => ({
@@ -617,10 +1056,20 @@ function showAreaDefaultGroupForm(player, areaId, origin) {
     if (currentDefaultGroupName) {
         // 查找当前默认组的详细信息（需要遍历）
         for (const key in allAvailableGroups) {
-            if (allAvailableGroups[key].originalGroupName === currentDefaultGroupName) {
-                currentDefaultDetails = allAvailableGroups[key];
-                break;
-            }
+             const group = allAvailableGroups[key];
+             // 精确匹配
+             if (group.originalGroupName === currentDefaultGroupName && group.creatorUuid) {
+                  const targetKey = `${currentDefaultGroupName}_${group.creatorUuid}`;
+                  const foundGroup = allAvailableGroups[targetKey];
+                  if (foundGroup) {
+                       currentDefaultDetails = foundGroup;
+                       break;
+                  }
+             }
+             // Fallback
+             else if (group.originalGroupName === currentDefaultGroupName) {
+                  currentDefaultDetails = group; // 可能不精确
+             }
         }
 
         if (currentDefaultDetails) {
@@ -644,15 +1093,57 @@ function showAreaDefaultGroupForm(player, areaId, origin) {
         }
     }
 
+    // --- 修改开始: 使用手动计数器代替 fm.content.length ---
+    let elementIndex = 0; // 初始化控件索引计数器
+
+    // 添加可能存在的 Label (如果当前默认组不在可选列表或未找到)
+    if (currentDefaultGroupName) {
+        // ... (查找 currentDefaultDetails 的逻辑保持不变) ...
+        if (currentDefaultDetails) {
+            const currentUniqueKey = `${currentDefaultDetails.originalGroupName}_${currentDefaultDetails.creatorUuid}`;
+            const idx = filteredGroupEntries.findIndex(([key, group]) => key === currentUniqueKey);
+            if (idx !== -1) {
+                currentIndex = idx + 1;
+            } else {
+                const currentDefaultDisplay = `${currentDefaultDetails.name} (${currentDefaultGroupName}) [§b${currentDefaultDetails.creatorName}§r]`;
+                fm.addLabel(`§e当前默认组: ${currentDefaultDisplay} (你无权选择此组)`);
+                elementIndex++; // 增加计数器
+            }
+        } else {
+            fm.addLabel(`§e当前默认组: ${currentDefaultGroupName} (未找到详情)`);
+            elementIndex++; // 增加计数器
+        }
+    }
+
     fm.addLabel("§e选择一个权限组作为该区域的默认权限组\n§7未设置特定权限组的玩家将使用此权限组");
+    elementIndex++; // 增加计数器
 
-    // 动态调整索引
-    const labelCount = fm.content.length;
-    const dropdownIndex = labelCount;
-    const backSwitchIndex = dropdownIndex + 1; // 返回开关索引
+    // 检查 groupOptions 是否为数组
+    if (!Array.isArray(groupOptions)) {
+         logError(`[showAreaDefaultGroupForm] groupOptions is not an array for area ${areaId}! Value: ${JSON.stringify(groupOptions)}`);
+         player.tell("§c创建表单时发生内部错误 (code: F2)。");
+         showPermissionManageForm(player, areaId, origin);
+         return;
+    }
+    const dropdownItems = groupOptions.map(o => o.text);
+     // 检查 dropdownItems 是否为数组
+     if (!Array.isArray(dropdownItems)) {
+         logError(`[showAreaDefaultGroupForm] dropdownItems is not an array after map for area ${areaId}! Value: ${JSON.stringify(dropdownItems)}`);
+         player.tell("§c创建表单时发生内部错误 (code: F3)。");
+         showPermissionManageForm(player, areaId, origin);
+         return;
+     }
 
-    fm.addDropdown("选择默认权限组", groupOptions.map(o => o.text), currentIndex); // index dropdownIndex
-    fm.addSwitch("§c返回", false); // index backSwitchIndex
+    // 使用计数器确定索引
+    const dropdownIndex = elementIndex;
+    fm.addDropdown("选择默认权限组", dropdownItems, currentIndex);
+    elementIndex++; // 增加计数器
+
+    const backSwitchIndex = elementIndex;
+    fm.addSwitch("§c返回", false);
+    elementIndex++; // 增加计数器
+    // --- 修改结束 ---
+
 
     player.sendForm(fm, (player, data) => {
         if(data === null) {
@@ -687,7 +1178,7 @@ function showAreaDefaultGroupForm(player, areaId, origin) {
             }
             groupToSet = selectedGroupDetails.originalGroupName; // 获取原始组名
 
-            // 再次验证权限
+            // 再次验证权限 (理论上过滤已完成，保留更安全)
             if (!hasAdminRight && groupHasAdminPermissions(selectedGroupDetails)) {
                 player.tell(`§c你没有权限设置包含管理权限的默认权限组 (${selectedGroupDetails.name})!`);
                 showPermissionManageForm(player, areaId, origin); // 返回上一级
@@ -706,6 +1197,7 @@ function showAreaDefaultGroupForm(player, areaId, origin) {
                 ? `§a已将区域默认权限组设置为: ${selectedGroupDetails?.name || groupToSet}`
                 : `§a已设置区域使用系统默认权限`;
             player.tell(message);
+            resetCache(); // 清理缓存
         } else {
             player.tell("§c设置默认权限组失败！");
         }
@@ -777,7 +1269,7 @@ function showGroupEditForm(player, groupId, areaId, origin) {
             // 使用 player.sendModalForm 直接发送确认对话框
             player.sendModalForm(
                 "确认删除权限组", // title
-                `§c确定要删除权限组 "${group.name}" (${groupId}) 吗？\n此操作不可撤销！`, // content
+                `§c确定要删除权限组 "${group.name}" (${groupId}) 吗？\n此操作不可撤销！\n§e使用此权限组的区域/玩家将恢复默认权限。`, // content
                 "§c确认删除", // confirmButton
                 "取消", // cancelButton
                 (player, confirmed) => { // callback
@@ -882,15 +1374,129 @@ function showGroupListForm(player, areaId, origin) {
     });
 }
 
+// --- 新增函数：查看权限组应用情况 ---
+function showGroupUsageForm(player, areaId, origin) {
+    const myGroups = getPlayerCustomGroups(player.uuid); // 获取当前玩家创建的所有组
+    const groupIds = Object.keys(myGroups);
+
+    if (groupIds.length === 0) {
+        player.tell("§c你还没有创建任何权限组，无法查看应用情况。");
+        showGroupManageForm(player, areaId, origin);
+        return;
+    }
+
+    const fm = mc.newSimpleForm();
+    fm.setTitle("权限组应用情况");
+    fm.setContent("选择一个你创建的权限组，查看它被哪些区域使用：");
+
+    const groupDisplayMap = {}; // 用于映射按钮 ID 到 group ID
+
+    groupIds.forEach((gid, index) => {
+        const group = myGroups[gid];
+        fm.addButton(`${group.name} (${gid})`, "textures/ui/icon_recipe_item");
+        groupDisplayMap[index] = gid; // 映射按钮索引到权限组 ID
+    });
+
+    fm.addButton("§c返回", "textures/ui/cancel");
+    const backButtonIndex = groupIds.length;
+
+    player.sendForm(fm, (player, id) => {
+        if (id === null || id === backButtonIndex) {
+            showGroupManageForm(player, areaId, origin);
+            return;
+        }
+
+        const selectedGroupId = groupDisplayMap[id]; // 获取选中的权限组 ID
+        if (!selectedGroupId) {
+            player.tell("§c无效的选择。");
+            showGroupUsageForm(player, areaId, origin); // 重新显示
+            return;
+        }
+
+        const groupName = myGroups[selectedGroupId].name;
+        let usageInfo = `§l权限组 "${groupName}" (${selectedGroupId}) 应用于以下区域：§r\n\n`;
+        let foundUsage = false;
+
+        try {
+            const db = getDbSession();
+
+            // 1. 查找将此组设为默认权限的区域
+            const defaultStmt = db.prepare("SELECT areaId FROM default_groups WHERE groupName = ?");
+            defaultStmt.bind(selectedGroupId);
+            const defaultAreas = [];
+            while (defaultStmt.step()) {
+                defaultAreas.push(defaultStmt.fetch().areaId);
+            }
+
+            if (defaultAreas.length > 0) {
+                foundUsage = true;
+                usageInfo += "§e作为默认权限组:§r\n";
+                const areaDetails = getAreaData(); // 获取所有区域数据以显示名称
+                defaultAreas.forEach(aid => {
+                    const areaName = areaDetails[aid]?.name || `未知区域 (${aid.substring(0, 6)}...)`;
+                    usageInfo += `- ${areaName} (${aid})\n`;
+                });
+                usageInfo += "\n";
+            }
+
+            // 2. 查找将此组设为特定玩家权限的区域
+            const specificStmt = db.prepare("SELECT DISTINCT areaId FROM permissions WHERE groupName = ?");
+            specificStmt.bind(selectedGroupId);
+            const specificAreas = [];
+            while (specificStmt.step()) {
+                 const currentAreaId = specificStmt.fetch().areaId;
+                 // 确保不重复添加已在默认列表中的区域
+                 if (!defaultAreas.includes(currentAreaId)) {
+                      specificAreas.push(currentAreaId);
+                 }
+            }
+
+            if (specificAreas.length > 0) {
+                foundUsage = true;
+                usageInfo += "§e作为特定玩家权限组:§r\n";
+                const areaDetails = getAreaData(); // 再次获取以防万一
+                specificAreas.forEach(aid => {
+                    const areaName = areaDetails[aid]?.name || `未知区域 (${aid.substring(0, 6)}...)`;
+                    usageInfo += `- ${areaName} (${aid})\n`;
+                });
+                 usageInfo += "\n";
+            }
+
+        } catch (e) {
+            logError(`查询权限组 ${selectedGroupId} 应用情况失败: ${e}`, e.stack);
+            player.tell("§c查询应用情况时出错！");
+            showGroupUsageForm(player, areaId, origin);
+            return;
+        }
+
+        if (!foundUsage) {
+            usageInfo += "§7(此权限组当前未被任何区域使用)";
+        }
+
+        // 显示结果表单
+        const resultFm = mc.newSimpleForm();
+        resultFm.setTitle(`应用情况 - ${groupName}`);
+        resultFm.setContent(usageInfo);
+        resultFm.addButton("§c返回列表", "textures/ui/cancel");
+
+        player.sendForm(resultFm, (player, id) => {
+            showGroupUsageForm(player, areaId, origin); // 返回权限组列表
+        });
+    });
+}
+
+
 // 导出函数
 module.exports = {
     showPermissionManageForm,
     showGroupManageForm,
     showAreaDefaultGroupForm,
-    showMemberListForm,
+    showMemberListForm, // 只显示特定权限成员
     showMemberEditForm,
     showAddMemberForm,
-    showGroupListForm,
+    showGroupListForm, // 显示自己的组
     showGroupEditForm,
-    showCreateGroupForm
+    showCreateGroupForm,
+    showAllPlayersPermissionForm, // 新增：管理所有玩家权限
+    showGroupUsageForm // 新增：查看权限组应用情况
 };

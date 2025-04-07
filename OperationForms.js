@@ -521,7 +521,7 @@ function confirmTransferArea(player, areaId, newOwnerData, origin) {
         if (data[2].trim().toLowerCase() !== 'confirm') {
             player.tell("§c转让取消！未输入 'confirm'。");
             showTransferAreaForm(player, areaId, origin); // 返回转让列表
-            return;
+             return;
         }
 
         // 重新获取最新的区域数据
@@ -532,6 +532,31 @@ function confirmTransferArea(player, areaId, newOwnerData, origin) {
              showAreaOperateForm(player, areaId, origin); // 返回操作菜单
              return;
         }
+
+        // --- 新增：检查接收方总区域大小限制 ---
+        const config = loadConfig(); // 获取配置
+        // 检查接收方是否为管理员以及是否启用了总大小限制
+        // 注意: isAreaAdmin 需要接收方的 uuid
+        if (!isAreaAdmin(newOwnerData.uuid) && config.maxTotalAreaSizePerPlayer > 0) {
+            // 1. 计算接收方当前拥有的主区域总大小
+            // 注意: calculatePlayerTotalAreaSize 需要接收方的 xuid
+            const receiverCurrentTotalSize = calculatePlayerTotalAreaSize(newOwnerData.xuid, currentAreaData);
+
+            // 2. 计算待转让区域的大小 (确保只计算主区域，子区域转让不影响总配额)
+            let areaToTransferSize = 0;
+            if (!currentArea.isSubarea) { // 只有主区域才计入总大小
+                areaToTransferSize = calculateAreaVolume(currentArea);
+            }
+
+            // 3. 检查转让后的总大小是否超限 (仅当转让的是主区域时才增加体积)
+            if (areaToTransferSize > 0 && (receiverCurrentTotalSize + areaToTransferSize > config.maxTotalAreaSizePerPlayer)) {
+                player.tell(`§c无法转让：接收方 ${newOwnerData.name} 的总区域大小将达到 ${receiverCurrentTotalSize + areaToTransferSize}，超过其总大小限制 ${config.maxTotalAreaSizePerPlayer}！`);
+                showTransferAreaForm(player, areaId, origin); // 返回转让列表
+                return; // 阻止转让
+            }
+             logDebug(`接收方 ${newOwnerData.name} (${newOwnerData.xuid}) 当前总大小: ${receiverCurrentTotalSize}, 待转让区域大小: ${areaToTransferSize}, 限制: ${config.maxTotalAreaSizePerPlayer}`);
+        }
+        // --- 检查结束 ---
 
 
         // 更新区域所有者信息
@@ -624,11 +649,11 @@ function showTransferAreaForm(player, areaId, origin, currentPage = 0, filter = 
     const backSwitchIndex = pageSliderIndex + 1; // 返回开关索引
 
     // 确认转让开关
-    fm.addSwitch("§c确认转让给选中的玩家", false); // index confirmSwitchIndex
+    fm.addSwitch("§c确认转让给选中的玩家", false); 
 
     // 分页选择器
     const pageItems = Array.from({length: totalPages}, (_, i) => `第${i + 1}页`);
-    fm.addStepSlider("选择页码", pageItems, currentPage); // index pageSliderIndex
+    fm.addStepSlider("选择页码", pageItems, currentPage); 
 
     // 返回按钮
     fm.addSwitch("§c返回", false); // index backSwitchIndex
@@ -727,6 +752,8 @@ function showAreaRulesForm(player, areaId, origin) {
         allowExplosionDamageBlock: false,
         allowFarmlandDecay: false,
         allowDragonEggTeleport: false,
+        allowFireworkDamage: false, // 新增：允许烟花伤害
+        allowMobGriefing: false, // 新增：允许生物破坏方块 (通用)
         displayTitle: true,
         displayActionBar: true,
         mobSpawnExceptions: [], // Ensure array exists
@@ -769,13 +796,17 @@ function showAreaRulesForm(player, areaId, origin) {
         allowEndermanPlaceBlock: "允许末影人放置方块",
         allowExplosionDamageBlock: "允许爆炸破坏区域内方块",
         allowFarmlandDecay: "允许耕地被踩踏破坏",
-        allowDragonEggTeleport: "允许龙蛋传送", 
+        allowDragonEggTeleport: "允许龙蛋传送",
+        allowFireworkDamage: "允许烟花火箭爆炸伤害", // 新增
+        allowMobGriefing: "允许生物破坏方块", // 新增
         displayTitle: "§b允许显示进入区域标题",
         displayActionBar: "§b允许在物品栏上方显示区域信息",
     };
 
     ruleKeys.forEach(key => {
-        fm.addSwitch(ruleLabels[key] || key, area.rules[key]);
+        // 确保新规则也有标签，否则使用 key 作为标签
+        const label = ruleLabels[key] || key;
+        fm.addSwitch(label, area.rules[key]);
     });
 
     // 生物生成例外

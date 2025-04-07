@@ -216,7 +216,7 @@ function handleAreaRefund(player, area) { // Changed parameters: player for mess
         return; // 如果找不到标识符则停止
     }
 
-    logInfo(`尝试为区域 ${areaIdentifier} 退款 ${refundAmount} ${currencyName}`);
+    logDebug(`尝试为区域 ${areaIdentifier} 退款 ${refundAmount} ${currencyName}`);
 
     // 根据经济类型决定退款对象
     let refundSuccess = false;
@@ -227,7 +227,7 @@ function handleAreaRefund(player, area) { // Changed parameters: player for mess
         // 计分板经济：退款给操作玩家
         recipientIdentifier = player.uuid; // 操作玩家的 UUID
         recipientName = player.name;
-        logInfo(`计分板经济，尝试退款给操作玩家 ${recipientName} (UUID: ${recipientIdentifier})`);
+        logDebug(`计分板经济，尝试退款给操作玩家 ${recipientName} (UUID: ${recipientIdentifier})`);
         // refundSuccess = addPlayerBalance(recipientIdentifier, refundAmount, config); // 原代码，暂时注释
         // 使用 pl.addScore 直接退款给操作玩家
         const pl = mc.getPlayer(recipientIdentifier);
@@ -245,7 +245,7 @@ function handleAreaRefund(player, area) { // Changed parameters: player for mess
         // 其他经济系统：退款给区域主人
         recipientIdentifier = area.xuid; // CzMoney 和 默认 money 使用 XUID
         recipientName = area.playerName || `标识符 ${recipientIdentifier}`;
-        logInfo(`非计分板经济，尝试退款给区域主人 ${recipientName} (XUID: ${recipientIdentifier})`);
+        logDebug(`非计分板经济，尝试退款给区域主人 ${recipientName} (XUID: ${recipientIdentifier})`);
         refundSuccess = addPlayerBalance(recipientIdentifier, refundAmount, config);
     }
 

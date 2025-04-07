@@ -16,6 +16,16 @@ function initDatabase() {
             //flags: ["WAL"] // 可选优化
         });
 
+        // 启用 WAL 模式
+        try {
+            dbSession.exec("PRAGMA journal_mode=WAL;");
+            logInfo("数据库 WAL 模式已启用。");
+        } catch (walError) {
+            logWarning(`启用数据库 WAL 模式失败: ${walError}`);
+            // 即使 WAL 失败，也继续尝试创建表
+        }
+
+
         // 创建表结构 (放入事务中确保原子性)
         dbSession.exec("BEGIN TRANSACTION"); // <- Optimization: Use transaction
         try {

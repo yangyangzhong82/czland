@@ -265,8 +265,6 @@ function createCustomGroup(uuid, groupName, displayName, permissions, inheritFro
        }
        return false;
    } finally {
-        // Finalize/reset statement if needed, though typically not required if not reused
-        // if (stmt) stmt.finalize(); // Or reset depending on API
    }
 }
 
@@ -303,32 +301,28 @@ function editCustomGroup(uuid, groupName, newDisplayName, newPermissions, inheri
 
         stmt.execute();
 
-        // Check affected rows using changes() function which is standard SQL for last statement
         let affectedRows = 0;
         const result = db.query("SELECT changes()"); // Execute changes() query
         if (result && result.length > 1 && result[1] && typeof result[1][0] === 'number') {
             affectedRows = result[1][0];
         } else {
-            // Fallback or alternative if DBSession provides property:
-            // affectedRows = stmt.affectedRows; // Check if this property exists and works for UPDATE
         }
 
-        // stmt.reset(); // Reset if reusing
 
         if (affectedRows > 0) {
             logInfo(`成功编辑权限组: ${newDisplayName} (${groupName}) for UUID: ${uuid}`);
             return true;
         } else {
-            // Check if the group actually exists if affectedRows is 0
+            
             const checkStmt = db.prepare("SELECT 1 FROM custom_groups WHERE uuid = ? AND groupName = ?");
             checkStmt.bind([uuid, groupName]);
-            // checkStmt.execute(); // Might not be needed
-            const exists = checkStmt.step(); // Check if any row matches
-            // checkStmt.reset();
+            
+            const exists = checkStmt.step(); 
+            
 
             if (exists) {
                  logger.warn(`编辑权限组 ${groupName} (UUID: ${uuid}) 未产生变更 (数据可能已是最新)`);
-                 return true; // Or false, depending on desired behavior for no-op update
+                 return true; 
             } else {
                  logger.error(`编辑失败：找不到权限组 ${groupName} (UUID: ${uuid})`);
                  return false;
@@ -370,21 +364,6 @@ function deleteCustomGroup(uuid, groupName) {
              logger.warn(`尝试删除权限组 ${groupName} (UUID: ${uuid})，但未找到或删除失败`);
              return false; // Group didn't exist or deletion failed
         }
-
-   /* // Old logic based on load/save cache, replaced with direct DB operation
-   const groupsData = loadCustomGroups(); // This loads ALL groups, inefficient for delete
-   if(!groupsData[uuid] || !groupsData[uuid][groupName]) {
-       logger.warn(`尝试删除不存在的权限组: UUID=${uuid}, GroupName=${groupName}`);
-       return false;
-   }
-
-   delete groupsData[uuid][groupName];
-   // If the uuid now has no groups, remove the uuid entry?
-   if (Object.keys(groupsData[uuid]).length === 0) {
-        delete groupsData[uuid];
-   }
-   return saveCustomGroups(groupsData); // This saves ALL groups, inefficient for delete
-   */
    } catch(e) {
         logger.error(`删除自定义权限组 ${groupName} (UUID: ${uuid}) 失败: ${e}`, e.stack);
         return false;

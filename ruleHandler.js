@@ -90,7 +90,7 @@ mc.listen("onFireSpread", function(pos) {
 iListenAttentively.emplaceListener(
     "ila::mc::world::FireTryBurnBlockBeforeEvent",
     event => {
-        let dim = event["dimid"];
+        let dim = event["dimId"];
         let x = event["pos"][0];
         let y = event["pos"][1];
         let z = event["pos"][2];
@@ -124,7 +124,7 @@ iListenAttentively.emplaceListener(
 iListenAttentively.emplaceListener(
     "ila::mc::world::level::block::MossGrowthBeforeEvent",
     event => {
-        let dim = event["dimid"];
+        let dim = event["dimId"];
         let x = event["pos"][0];
         let y = event["pos"][1];
         let z = event["pos"][2];
@@ -158,7 +158,7 @@ iListenAttentively.emplaceListener(
 iListenAttentively.emplaceListener(
     "ila::mc::world::level::block::SculkSpreadBeforeEvent",
     event => {
-        let dim = event["dimid"];
+        let dim = event["dimId"];
         let x = event["selfPos"][0];
         let y = event["selfPos"][1];
         let z = event["selfPos"][2];
@@ -275,17 +275,16 @@ mc.listen("onMobTrySpawn", function(typeName, pos) {
     }
 });
 
-// 龙蛋传送事件 (iListenAttentively)
 iListenAttentively.emplaceListener(
     "ila::mc::world::level::block::DragonEggBlockTeleportBeforeEvent",
     event => {
         let x = event["pos"][0];
         let y = event["pos"][1];
         let z = event["pos"][2];
-        let dim = event["dimid"];
-        const pos = { x, y, z, dimid: dim === "Overworld" ? 0 : (dim === "Nether" ? 1 : 2) }; // 修正维度ID
-
+        let dim = event["dimId"];
         logDebug(`检测到龙蛋传送事件 at (${x}, ${y}, ${z}) 维度: ${dim}`);
+
+        const pos = { x, y, z, dimid: dim === "Overworld" ? 0 : (dim === "Nether" ? 1 : 2) }; // 修正维度ID
 
         const areaData = getAreaData();
         const spatialIndex = getSpatialIndex(); // 获取空间索引
@@ -308,3 +307,71 @@ iListenAttentively.emplaceListener(
     },
     iListenAttentively.EventPriority.High
 );
+
+iListenAttentively.emplaceListener(
+    "ila::mc::world::actor::FireworkRocketDealDamageBeforeEvent",
+    event => {
+
+        const Firework = iListenAttentively.getActor(event["self"]); // 获取实体对象
+        if (!Firework) return; 
+        const pos = Firework.pos; 
+
+        const areaData = getAreaData();
+        const spatialIndex = getSpatialIndex();
+        const areasAtPos = getPriorityAreasAtPosition(pos, areaData, spatialIndex);
+
+        if (areasAtPos.length > 0) {
+            const areaInfo = areasAtPos[0]; // 检查优先级最高的区域
+            const area = areaInfo.area;
+            const areaId = areaInfo.id;
+
+            // 检查区域是否允许烟花伤害
+            if (!area.rules || area.rules.allowFireworkDamage === false) { // 显式检查 false 或 undefined
+                logDebug(`区域 ${areaId} (${area.name}) 不允许烟花伤害，已拦截`);
+                event["cancelled"] = true; // 拦截伤害
+                return;
+            }
+        }
+        // 不在区域内或区域允许
+        logDebug(`允许烟花伤害 at (${pos.x}, ${pos.y}, ${pos.z})`);
+    },
+    iListenAttentively.EventPriority.High 
+);
+
+
+iListenAttentively.emplaceListener(
+    "ila::mc::world::actor::ActorDestroyBlockEvent", // 监听生物破坏方块事件
+    event => {
+        // logger.warn(event.toSNBT()); // Debugging line
+
+        const Entity = iListenAttentively.getActor(event["self"]); // 获取实体对象
+        if (!Entity) return; // 防御性检查
+
+        // 尝试从事件数据中获取被破坏方块的位置
+        const blockPosX = event["pos"][0];
+        const blockPosY = event["pos"][1];
+        const blockPosZ = event["pos"][2];
+        const dim = Entity.pos.dimid // 获取维度
+
+        // 修正 pos 对象，使用正确的属性名 x, y, z, dimid
+        const pos = { x: blockPosX, y: blockPosY, z: blockPosZ, dimid: dim };
+        //logDebug(`检测到实体 ${Entity.type} 尝试破坏方块 at (${blockPosX}, ${blockPosY}, ${blockPosZ}) 维度: ${dim}`);
+
+        const areaData = getAreaData();
+        const spatialIndex = getSpatialIndex();
+        const areasAtPos = getPriorityAreasAtPosition(pos, areaData, spatialIndex);
+
+        if (areasAtPos.length > 0) {
+            const areaInfo = areasAtPos[0]; // 检查优先级最高的区域
+            const area = areaInfo.area;
+            const areaId = areaInfo.id;
+            if (!area.rules || area.rules.allowMobGriefing === false) { 
+                //logDebug(`区域 ${areaId} (${area.name}) 不允许生物破坏方块，已拦截 ${Entity.type} 的行为`);
+                event["cancelled"] = true; // 拦截破坏
+                return;
+            }
+        }
+    },
+    iListenAttentively.EventPriority.High 
+);
+
