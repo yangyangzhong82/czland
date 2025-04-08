@@ -12,7 +12,9 @@ const { calculateAreaPrice, handleAreaPurchase, handleAreaRefund } = require('./
 const { loadConfig } = require('./configManager');
 const { showSubAreaManageForm } = require('./subareaForms');
 const {logDebug, logInfo, logWarning, logError } = require('./logger');
-const { setAreaTeleportPoint, teleportPlayerToArea } = require('./teleport'); 
+const { setAreaTeleportPoint, teleportPlayerToArea } = require('./teleport');
+// Removed top-level require to potentially break circular dependency
+// const { showPermissionManageForm, showGroupManageForm } = require('./permissionform');
 
 function showMainForm(player) {
     const fm = mc.newSimpleForm();
@@ -285,8 +287,9 @@ function showAreaListForm(player, currentPage = 0, filter = "", dimFilters = [],
 
 // 添加 origin 参数，默认为 'main'
 function showAreaOperateForm(player, areaId, origin = 'main') {
+    // Moved requires inside the function
     const { confirmResizeArea,showRenameForm,confirmDeleteArea,showTransferAreaForm,showAreaRulesForm} = require('./OperationForms');
-    const { showPermissionManageForm,showGroupManageForm} = require('./permissionform');
+    const { showPermissionManageForm, showGroupManageForm } = require('./permissionform'); // Keep require here as it's needed when the function runs
     const areaData = getAreaData();
     const area = areaData[areaId];
     if (!area) {

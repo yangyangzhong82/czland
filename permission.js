@@ -873,6 +873,9 @@ module.exports = {
     groupHasAdminPermissions,
     getAvailableGroups,
     resetCache
+    // getPlayerAreaGroup and getGroupPermissions moved to api.js
 };
 
+
 // 移除 loadDefaultGroupPermissions() 调用
+// getPlayerAreaGroup and getGroupPermissions moved to api.js

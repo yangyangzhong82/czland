@@ -7,6 +7,8 @@ const { getDbSession } = require('./database');
 const { loadConfig } = require('./configManager'); // 加载主配置文件的函数
 const { buildSpatialIndex } = require('./spatialIndex'); // 引入空间索引构建函数
 const { initLogger, logDebug, logInfo, logWarning, logError } = require('./logger'); // 导入 initLogger
+const { checkPermission } = require('./permission'); // 导入权限检查函数
+const { getHighestPriorityArea } = require('./utils'); // 导入获取最高优先级区域函数
 let playerCurrentAreas = {};
 let areaData = {};
 let spatialIndex = {}; // 添加变量来存储空间索引
@@ -50,6 +52,7 @@ function initializeCommands() {
         saveAreaData
     );
     require('./eventHandler');
+    require('./apiExports.js'); // Load the dedicated API export module
 }
 
 function updateAreaData(newAreaData) {
@@ -186,3 +189,5 @@ module.exports = {
     checkPlayerArea,
     getSpatialIndex, // 导出获取索引的函数
 };
+
+// Initialize API exports by requiring the dedicated module
