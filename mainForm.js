@@ -147,8 +147,12 @@ function showAreaListForm(player, currentPage = 0, filter = "", dimFilters = [],
         });
     }
 
+    // 加载配置
+    const config = loadConfig();
+    const itemsPerPage = config.forms?.itemsPerPage || 5; // 从配置获取，默认5
+
     // 分页设置
-    const pageSize = 5;
+    const pageSize = itemsPerPage; // 使用配置值
     const totalPages = Math.max(1, Math.ceil(filteredAreas.length / pageSize));
     currentPage = Math.min(currentPage, totalPages - 1);
 
@@ -219,41 +223,65 @@ function showAreaListForm(player, currentPage = 0, filter = "", dimFilters = [],
     fm.addSwitch("§c返回主菜单", false); // index backSwitchIndex
 
     // 发送表单
-    player.sendForm(fm, (player, data) => {
-        if (data === null) {
-            showMainForm(player); // 取消返回主菜单
+    player.sendForm(fm, (player, data, reason) => { // Added reason parameter from docs
+        logDebug(`showAreaListForm callback received. Type: ${typeof data}, Data: ${JSON.stringify(data)}, Reason: ${reason}`);
+
+        // 增强检查：处理 null, undefined, 或非数组的 data
+        if (!data || !Array.isArray(data)) {
+            logDebug(`Form cancelled or invalid data received (not a valid array). Returning to main menu.`);
+            showMainForm(player); // Treat cancellation or invalid data as cancellation
             return;
         }
 
-        // 检查是否点击了返回开关
-        if (data[backSwitchIndex]) {
-            showMainForm(player);
-            return;
+        // 增强检查：确保索引在 data 数组范围内
+        const dataLength = data.length; // 获取一次长度避免重复计算
+        logDebug(`Data is array. Length: ${dataLength}. Calculated indices: areaStartIndex=${areaStartIndex}, completeSwitchIndex=${completeSwitchIndex}, pageSliderIndex=${pageSliderIndex}, backSwitchIndex=${backSwitchIndex}`);
+
+        // 检查是否点击了返回开关 (更详细的日志)
+        if (backSwitchIndex < dataLength) {
+            const backButtonValue = data[backSwitchIndex];
+            logDebug(`Checking backSwitchIndex (${backSwitchIndex}). Value type: ${typeof backButtonValue}, Value: ${JSON.stringify(backButtonValue)}`);
+            // CustomForm switch returns boolean true/false
+            if (backButtonValue === true) {
+                logDebug("Back switch pressed, returning to main menu.");
+                showMainForm(player);
+                return;
+            }
+        } else {
+             // This case should ideally not happen if form elements are added correctly
+             logWarning(`backSwitchIndex (${backSwitchIndex}) is out of bounds for data array (length ${dataLength}). Cannot check back button state. This might indicate an issue with form construction or data reception.`);
+             // It might be safer to return here if the structure is unexpected
+             // showMainForm(player);
+             // return;
         }
 
-        const keyword = data[0].trim();
+        // 安全地获取 keyword
+        const keyword = (dataLength > 0 && data[0] !== null && data[0] !== undefined) ? String(data[0]).trim() : "";
 
-        // 收集维度筛选
+
+        // 收集维度筛选 (安全访问)
         const newDimFilters = [];
-        if (data[2]) newDimFilters.push(0);  // 主世界
-        if (data[3]) newDimFilters.push(-1); // 下界
-        if (data[4]) newDimFilters.push(1);  // 末地
+        if (dataLength > 2 && data[2]) newDimFilters.push(0);  // 主世界
+        if (dataLength > 3 && data[3]) newDimFilters.push(-1); // 下界
+        if (dataLength > 4 && data[4]) newDimFilters.push(1);  // 末地
 
-        // 处理多个区域主人筛选
-        const ownerInput = data[5].trim();
+        // 处理多个区域主人筛选 (安全访问)
+        const ownerInput = (dataLength > 5 && data[5] !== null && data[5] !== undefined) ? String(data[5]).trim() : "";
         const newOwnerFilters = ownerInput ? ownerInput.split(",").map(o => o.trim()).filter(o => o) : [];
 
         const selectedAreas = [];
 
-        // 收集选中的区域
+        // 收集选中的区域 (安全访问)
         for (let i = 0; i < pageAreas.length; i++) {
-            if (data[i + areaStartIndex] === true) {
+            const dataIndex = i + areaStartIndex;
+            if (dataIndex < dataLength && data[dataIndex] === true) {
                 selectedAreas.push(pageAreas[i].id);
             }
         }
 
-        const completeSwitch = data[completeSwitchIndex];
-        const newPage = data[pageSliderIndex];
+        // 安全地获取 completeSwitch 和 newPage
+        const completeSwitch = (completeSwitchIndex < dataLength) ? data[completeSwitchIndex] : false;
+        const newPage = (pageSliderIndex < dataLength) ? data[pageSliderIndex] : currentPage;
 
         // 处理表单结果
         if (completeSwitch && selectedAreas.length === 1) {
@@ -277,11 +305,13 @@ function showAreaListForm(player, currentPage = 0, filter = "", dimFilters = [],
             return;
         }
 
-        if (selectedAreas.length !== 1) {
+        // 如果执行到这里，说明没有完成选择单个区域，或者筛选/分页条件未变
+        // 重新显示表单，如果是因为无效选择而按了“完成”，则提示
+        if (completeSwitch && selectedAreas.length !== 1) {
             player.tell("§e请选择一个区域并点击完成选择。");
-            showAreaListForm(player, currentPage, filter, dimFilters, ownerFilters);
-            return;
         }
+        // 重新显示当前状态的表单
+        showAreaListForm(player, currentPage, filter, dimFilters, ownerFilters);
     });
 }
 
@@ -291,7 +321,8 @@ function showAreaOperateForm(player, areaId, origin = 'main') {
     const { confirmResizeArea,showRenameForm,confirmDeleteArea,showTransferAreaForm,showAreaRulesForm} = require('./OperationForms');
     const { showPermissionManageForm, showGroupManageForm } = require('./permissionform'); // Keep require here as it's needed when the function runs
     const areaData = getAreaData();
-    const area = areaData[areaId];
+    const area = areaData[areaId]; // Get a reference to the area in the main data object
+
     if (!area) {
         player.tell("§c区域不存在！");
         // 根据来源决定返回哪里
@@ -302,6 +333,26 @@ function showAreaOperateForm(player, areaId, origin = 'main') {
         }
         return;
     }
+
+    // --- 自动补全迁移区域的 UUID ---
+    if (area.xuid === player.xuid && !area.uuid) {
+        logInfo(`[UUID Auto-Complete] 检测到区域 "${area.name}" (ID: ${areaId}) 的主人 ${player.name} (XUID: ${player.xuid}) 首次访问，正在自动补全 UUID: ${player.uuid}`);
+        area.uuid = player.uuid; // Update the UUID in the area object directly
+        area.playerName = player.name; // Optionally update the player name as well
+
+        // 保存更改
+        const { saveAreaData } = require('./config'); // Ensure save function is available
+        const { updateAreaData } = require('./czareaprotection'); // Ensure update function is available
+        if (saveAreaData(areaData)) { // Save the entire updated areaData object
+            updateAreaData(areaData); // Update the in-memory data
+            logInfo(`[UUID Auto-Complete] 成功为区域 ${areaId} 保存了 UUID 和玩家名称。`);
+        } else {
+            logError(`[UUID Auto-Complete] 尝试为区域 ${areaId} 保存 UUID 时失败！`);
+            // Even if saving fails, continue showing the form, but the UUID might not persist.
+        }
+    }
+    // --- UUID 自动补全结束 ---
+
 
     const fm = mc.newSimpleForm();
     fm.setTitle(`§e[czland]§l${area.name} - §0操作菜单`);
@@ -643,8 +694,29 @@ function showAreaInfo(player, areaId, origin) {
     for (const uuid in areaPermissions) {
         const groupName = areaPermissions[uuid];
         // 注意：这里 areaPermissions 的键是 uuid，所以我们用 playerUuidMap
-        const playerName = playerUuidMap[uuid] || "未知玩家";
-        const groupDisplayName = availableGroups[groupName]?.name || groupName;
+        const playerName = playerUuidMap[uuid] || `未知玩家 (UUID: ${uuid.substring(0, 8)}...)`; // Show partial UUID if name unknown
+
+        // --- 获取组的显示名称 ---
+        let groupDisplayName = groupName; // Default to raw groupName
+        try {
+            // 尝试从数据库查找该 groupName 的一个实例来获取显示名称
+            // 注意：这假设所有同名组的 displayName 应该一致，或者取第一个找到的
+            const db = getDbSession();
+            const stmt = db.prepare("SELECT displayName FROM custom_groups WHERE groupName = ? LIMIT 1");
+            stmt.bind(groupName);
+            if (stmt.step()) {
+                const row = stmt.fetch();
+                if (row && row.displayName) {
+                    groupDisplayName = row.displayName;
+                }
+            }
+            // stmt.reset(); // Reset if needed
+        } catch (e) {
+            logError(`在 showAreaInfo 中查询组 ${groupName} 的 displayName 失败: ${e}`);
+            // Keep default groupDisplayName
+        }
+        // --- 结束获取组的显示名称 ---
+
         if (groupName) { // 确保 groupName 存在
             infoContent += `  §f${playerName}: §b${groupDisplayName}\n`;
             specificMemberCount++;

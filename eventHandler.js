@@ -4,7 +4,7 @@ const { worldToChunkCoords } = require('./spatialIndex');
 const { checkPermission } = require('./permission');
 const { PERMISSIONS } = require('./permissionRegistry');
 const { loadConfig } = require('./configManager');
-const config = loadConfig(); // Load initial config, but reload in handlers if needed
+const config = loadConfig(); // 在文件顶部加载配置
 const iListenAttentively = require('../iListenAttentively-LseExport/lib/iListenAttentively.js');
 const { logDebug, logInfo, logWarning, logError } = require('./logger');
 require('./ruleHandler'); // 引入规则处理器
@@ -60,7 +60,7 @@ function handlePermissionCheck(player, pos, permissionId, actionDescription, den
         // 只有当确实在区域内时才提示（checkPriorityPermission内部处理了不在区域的情况）
         const areasAtPos = getPriorityAreasAtPosition(pos, areaData, spatialIndex);
         if (areasAtPos.length > 0 && denialMessage) {
-            player.tell(denialMessage);
+            player.tell(denialMessage,4);
         }
         // 如果不在区域内，hasPermission 会是 true，如果在了区域内但没权限，则返回 false
         return false;
@@ -122,7 +122,7 @@ function handleAttackPermission(player, targetEntity) {
             const areasAtPos = getPriorityAreasAtPosition(pos, areaData, spatialIndex);
             if (areasAtPos.length > 0) {
                 // 根据特定类型提示，因为用户尝试攻击的是特定类型
-                player.tell(`§c你没有权限在此区域攻击${specificPermissionName}！`);
+                player.tell(`§c你没有权限在此区域攻击${specificPermissionName}！`,4);
                 return false; // 特定和通用权限都没有
             }
         }
@@ -217,424 +217,474 @@ const getItemOnBlockPermissionMap = () => {
 
 // --- 事件监听器 ---
 
-mc.listen("onDestroyBlock", (player, block) => {
-    return handlePermissionCheck(player, block.pos, PERMISSIONS.BREAK.id, "破坏方块", "§c你没有权限在此区域破坏方块！");
-});
+if (config.listenerControl.onDestroyBlock) {
+    mc.listen("onDestroyBlock", (player, block) => {
+        return handlePermissionCheck(player, block.pos, PERMISSIONS.BREAK.id, "破坏方块", "§c你没有权限在此区域破坏方块！");
+    });
+}
 
-mc.listen("onPlaceBlock", (player, block) => {
-    return handlePermissionCheck(player, block.pos, PERMISSIONS.PLACE.id, "放置方块", "§c你没有权限在此区域放置方块！");
-});
+if (config.listenerControl.onPlaceBlock) {
+    mc.listen("onPlaceBlock", (player, block) => {
+        return handlePermissionCheck(player, block.pos, PERMISSIONS.PLACE.id, "放置方块", "§c你没有权限在此区域放置方块！");
+    });
+}
 
-mc.listen("onOpenContainer", (player, block) => {
-    const pos = block.pos;
-    const areaData = getAreaData();
-    const spatialIndex = getSpatialIndex();
-    const currentConfig = loadConfig(); // 获取最新配置
+if (config.listenerControl.onOpenContainer) {
+    mc.listen("onOpenContainer", (player, block) => {
+        const pos = block.pos;
+        const areaData = getAreaData();
+        const spatialIndex = getSpatialIndex();
+        const currentConfig = loadConfig(); // 获取最新配置
 
-    // 不在区域内直接允许
-    const areasAtPos = getPriorityAreasAtPosition(pos, areaData, spatialIndex);
-    if (areasAtPos.length === 0) {
-        return true;
-    }
-    logDebug(`玩家 ${player.name} 尝试打开容器 ${block.type} at (${pos.x}, ${pos.y}, ${pos.z})`);
-
-    let permissionId = null;
-
-    // 优先检查特殊类型（潜影盒、铁砧）
-    if (currentConfig.shulkerBoxTypes && matchesIdPattern(block.type, currentConfig.shulkerBoxTypes)) {
-        permissionId = PERMISSIONS.OPEN_SHULKER.id;
-        logDebug("检测到潜影盒");
-    } else if (currentConfig.anvilTypes && matchesIdPattern(block.type, currentConfig.anvilTypes)) {
-        permissionId = PERMISSIONS.OPEN_ANVIL.id;
-        logDebug("检测到铁砧");
-    } else {
-        // 检查普通容器映射表
-        permissionId = containerPermissionMap[block.type];
-        if (permissionId) {
-            logDebug(`检测到容器 ${block.type}`);
-        } else {
-            // 未在映射表中找到，使用通用容器权限
-            permissionId = PERMISSIONS.OPEN_OTHER_CONTAINER.id;
-            logDebug(`未匹配特定容器，使用通用权限 ${permissionId}`);
+        // 不在区域内直接允许
+        const areasAtPos = getPriorityAreasAtPosition(pos, areaData, spatialIndex);
+        if (areasAtPos.length === 0) {
+            return true;
         }
-    }
+        logDebug(`玩家 ${player.name} 尝试打开容器 ${block.type} at (${pos.x}, ${pos.y}, ${pos.z})`);
 
-    if (permissionId) {
-        return handlePermissionCheck(player, pos, permissionId, `打开容器 ${block.type}`, "§c你没有权限操作这个容器！");
-    }
+        let permissionId = null;
 
-    logWarning(`无法确定 ${block.type} 的容器权限ID，默认允许`);
-    return true; // 如果连通用权限ID都没有（理论上不应发生），则默认允许
-});
+        // 优先检查特殊类型（潜影盒、铁砧） - 使用新的配置路径
+        if (currentConfig.blockTypes?.shulkerBox && matchesIdPattern(block.type, currentConfig.blockTypes.shulkerBox)) {
+            permissionId = PERMISSIONS.OPEN_SHULKER.id;
+            logDebug("检测到潜影盒");
+        } else if (currentConfig.blockTypes?.anvil && matchesIdPattern(block.type, currentConfig.blockTypes.anvil)) {
+            permissionId = PERMISSIONS.OPEN_ANVIL.id;
+            logDebug("检测到铁砧");
+        } else {
+            // 检查普通容器映射表
+            permissionId = containerPermissionMap[block.type];
+            if (permissionId) {
+                logDebug(`检测到容器 ${block.type}`);
+            } else {
+                // 未在映射表中找到，使用通用容器权限
+                permissionId = PERMISSIONS.OPEN_OTHER_CONTAINER.id;
+                logDebug(`未匹配特定容器，使用通用权限 ${permissionId}`);
+            }
+        }
 
-mc.listen("onTakeItem", (player, item) => {
-    // 拾取物品通常不需要提示
-    return handlePermissionCheck(player, item.pos, PERMISSIONS.PICKUP_ITEMS.id, "拾取物品");
-});
+        if (permissionId) {
+            return handlePermissionCheck(player, pos, permissionId, `打开容器 ${block.type}`, "§c你没有权限操作这个容器！");
+        }
+
+        logWarning(`无法确定 ${block.type} 的容器权限ID，默认允许`);
+        return true; // 如果连通用权限ID都没有（理论上不应发生），则默认允许
+    });
+}
+
+if (config.listenerControl.onTakeItem) {
+    mc.listen("onTakeItem", (player, item) => {
+        // 拾取物品通常不需要提示
+        return handlePermissionCheck(player, item.pos, PERMISSIONS.PICKUP_ITEMS.id, "拾取物品");
+    });
+}
 
 // 监听丢弃物品事件 (ila)
-/*
-iListenAttentively.emplaceListener(
-    "ila::mc::world::actor::player::PlayerDropItemAfterEvent",
-    event => {
-        const player = iListenAttentively.getPlayer(event["self"]);
-        if (!player) return; // 防御性编程
+if (config.listenerControl.onDropItem) {
+    try { // Add try-catch for ila listener
+        iListenAttentively.emplaceListener(
+            "ila::mc::world::actor::player::PlayerDropItemAfterEvent",
+            event => {
+                const player = iListenAttentively.getPlayer(event["self"]);
+                if (!player) return; // 防御性编程
 
-        const result = handlePermissionCheck(player, player.pos, PERMISSIONS.DROP_ITEMS.id, "丢弃物品", "§c你没有权限在此区域丢弃物品！");
-        if (!result) {
-            event["cancelled"] = true; // 拦截
-        }
-    },
-    iListenAttentively.EventPriority.High
-);
-*/
+                const result = handlePermissionCheck(player, player.pos, PERMISSIONS.DROP_ITEMS.id, "丢弃物品", "§c你没有权限在此区域丢弃物品！");
+                if (!result) {
+                    event["cancelled"] = true; // 拦截
+                }
+            },
+            iListenAttentively.EventPriority.High
+        );
+    } catch (e) {
+        logError(`Failed to register ila::mc::world::actor::player::PlayerDropItemAfterEvent listener: ${e.message}`);
+    }
+}
 
 // 监听物品丢弃 (LLSE API - 如果需要的话)
 /*
-mc.listen("onDropItem", (player, item) => {
-    return handlePermissionCheck(player, player.pos, PERMISSIONS.DROP_ITEMS.id, "丢弃物品", "§c你没有权限在此区域丢弃物品！");
-});
+if (config.listenerControl.onDropItem) { // Also controlled by onDropItem
+    mc.listen("onDropItem", (player, item) => {
+        return handlePermissionCheck(player, player.pos, PERMISSIONS.DROP_ITEMS.id, "丢弃物品", "§c你没有权限在此区域丢弃物品！");
+    });
+}
 */
 
-mc.listen("onStepOnPressurePlate", (entity, pressurePlate) => {
-    if (!entity.isPlayer()) return true; // 只处理玩家
-    const player = entity.toPlayer();
-    return handlePermissionCheck(player, pressurePlate.pos, PERMISSIONS.USE_PRESSURE_PLATE.id, "使用压力板", "§c你没有权限在此区域使用压力板！");
-});
+if (config.listenerControl.onStepOnPressurePlate) {
+    mc.listen("onStepOnPressurePlate", (entity, pressurePlate) => {
+        if (!entity.isPlayer()) return true; // 只处理玩家
+        const player = entity.toPlayer();
+        return handlePermissionCheck(player, pressurePlate.pos, PERMISSIONS.USE_PRESSURE_PLATE.id, "使用压力板", "§c你没有权限在此区域使用压力板！");
+    });
+}
 
-mc.listen("onRide", (entity1, entity2) => {
-    if (!entity1.isPlayer()) return true; // 只处理玩家骑乘者
-    const player = entity1.toPlayer();
-    const pos = entity2.pos;
-    const areaData = getAreaData();
-    const spatialIndex = getSpatialIndex();
-    const currentConfig = loadConfig(); // 获取最新配置
+if (config.listenerControl.onRide) {
+    mc.listen("onRide", (entity1, entity2) => {
+        if (!entity1.isPlayer()) return true; // 只处理玩家骑乘者
+        const player = entity1.toPlayer();
+        const pos = entity2.pos;
+        const areaData = getAreaData();
+        const spatialIndex = getSpatialIndex();
+        const currentConfig = loadConfig(); // 获取最新配置
 
-    logDebug(`玩家 ${player.name} 尝试骑乘实体 ${entity2.type} at (${pos.x}, ${pos.y}, ${pos.z})`);
+        logDebug(`玩家 ${player.name} 尝试骑乘实体 ${entity2.type} at (${pos.x}, ${pos.y}, ${pos.z})`);
 
-    const rideMappings = [
-        { types: currentConfig.entityTypes?.boats, permission: PERMISSIONS.RIDE_BOAT, name: "船", message: "§c你没有权限在此区域乘坐船！" },
-        { types: currentConfig.entityTypes?.minecarts, permission: PERMISSIONS.RIDE_MINECART, name: "矿车", message: "§c你没有权限在此区域乘坐矿车！" },
-        { types: currentConfig.entityTypes?.horses, permission: PERMISSIONS.RIDE_HORSE, name: "马类坐骑", message: "§c你没有权限在此区域骑马！" },
-        // 可以添加其他可骑乘实体类型
-    ];
+        const rideMappings = [
+            { types: currentConfig.entityTypes?.boats, permission: PERMISSIONS.RIDE_BOAT, name: "船", message: "§c你没有权限在此区域乘坐船！" },
+            { types: currentConfig.entityTypes?.minecarts, permission: PERMISSIONS.RIDE_MINECART, name: "矿车", message: "§c你没有权限在此区域乘坐矿车！" },
+            { types: currentConfig.entityTypes?.horses, permission: PERMISSIONS.RIDE_HORSE, name: "马类坐骑", message: "§c你没有权限在此区域骑马！" },
+            // 可以添加其他可骑乘实体类型
+        ];
 
-    let specificPermissionId = null;
-    let specificDenialMessage = null;
+        let specificPermissionId = null;
+        let specificDenialMessage = null;
 
-    for (const mapping of rideMappings) {
-        if (mapping.types && matchesIdPattern(entity2.type, mapping.types)) {
-            specificPermissionId = mapping.permission.id;
-            specificDenialMessage = mapping.message;
-            logDebug(`检测到特定可骑乘实体 ${mapping.name}，检查权限 ${specificPermissionId}`);
-            break;
-        }
-    }
-
-    // 优先处理特定类型
-    if (specificPermissionId) {
-        const hasSpecificPerm = checkPriorityPermission(player, pos, specificPermissionId, areaData, spatialIndex);
-        logDebug(`特定骑乘权限 ${specificPermissionId} 检查结果: ${hasSpecificPerm}`);
-
-        if (!hasSpecificPerm) {
-            // 如果特定权限被拒绝，则直接拒绝，并提示特定信息
-            logDebug(`特定骑乘权限 ${specificPermissionId} 被拒绝，操作不允许`);
-            const areasAtPos = getPriorityAreasAtPosition(pos, areaData, spatialIndex);
-            if (areasAtPos.length > 0) {
-                 player.tell(specificDenialMessage || "§c你没有权限在此区域骑乘此实体！");
+        for (const mapping of rideMappings) {
+            if (mapping.types && matchesIdPattern(entity2.type, mapping.types)) {
+                specificPermissionId = mapping.permission.id;
+                specificDenialMessage = mapping.message;
+                logDebug(`检测到特定可骑乘实体 ${mapping.name}，检查权限 ${specificPermissionId}`);
+                break;
             }
-            return false;
-        } else {
-             // 如果特定权限允许，则直接允许
-             logDebug(`特定骑乘权限 ${specificPermissionId} 允许，操作允许`);
-             return true;
-        }
-        // 注意：这里不再回退检查通用权限。特定权限的设置（允许或拒绝）具有最高优先级。
-        // 如果特定权限没有显式设置，checkPriorityPermission 会根据继承规则返回结果，
-        // 如果继承结果是允许，就在上面返回 true 了。如果继承结果是拒绝，就在上面返回 false 了。
-        // 只有完全不匹配特定类型时，才检查通用权限。
-    }
-
-    // 如果不匹配特定类型，检查通用骑乘权限
-    logDebug(`未匹配特定可骑乘实体，检查通用骑乘权限 ${PERMISSIONS.RIDE_ENTITY.id}`);
-    const hasGeneralRidePermission = checkPriorityPermission(player, pos, PERMISSIONS.RIDE_ENTITY.id, areaData, spatialIndex);
-    logDebug(`通用骑乘权限 ${PERMISSIONS.RIDE_ENTITY.id} 检查结果: ${hasGeneralRidePermission}`);
-    if (!hasGeneralRidePermission) {
-        const areasAtPos = getPriorityAreasAtPosition(pos, areaData, spatialIndex);
-        if (areasAtPos.length > 0) {
-            player.tell("§c你没有权限在此区域骑乘此实体！"); // 通用失败提示
-            return false;
-        }
-    }
-    return hasGeneralRidePermission;
-});
-
-mc.listen("onChangeArmorStand", (armorStand, player, slot) => {
-    return handlePermissionCheck(player, armorStand.pos, PERMISSIONS.ARMOR_STAND.id, "操作盔甲架", "§c你没有权限在此区域操作盔甲架！");
-});
-
-mc.listen("onAttackEntity", (player, entity) => {
-    return handleAttackPermission(player, entity);
-});
-
-mc.listen("onMobHurt", (mob, source, damage, cause) => {
-    if (!source || !source.isPlayer()) return true; // 只处理玩家造成的伤害
-    const player = source.toPlayer();
-    // 注意：这里复用 handleAttackPermission，它内部会检查权限并可能发送消息
-    // onMobHurt 通常不需要单独发送 "你没有权限攻击" 的消息，因为 onAttackEntity 可能已经发送了
-    // 但我们需要阻止伤害，所以返回 handleAttackPermission 的结果
-    return handleAttackPermission(player, mob);
-});
-
-mc.listen("onAttackBlock", (player, block, item) => {
-    const pos = block.pos;
-    const currentConfig = loadConfig(); // 获取最新配置
-
-    // 优先检查龙蛋交互
-    if (currentConfig.blockTypes?.dragonEgg && matchesIdPattern(block.type, currentConfig.blockTypes.dragonEgg)) {
-        logDebug("检测到攻击龙蛋");
-        return handlePermissionCheck(player, pos, PERMISSIONS.INTERACT_DRAGON_EGG.id, "攻击龙蛋", "§c你没有权限操作这个龙蛋！");
-    }
-
-    // 检查通用攻击方块权限 (攻击失败通常不提示)
-    return handlePermissionCheck(player, pos, PERMISSIONS.ATTACK_BLOCK.id, "攻击方块");
-});
-
-mc.listen("onUseItem", (player, item) => {
-    const pos = player.pos; // 使用玩家位置
-    const areaData = getAreaData();
-    const spatialIndex = getSpatialIndex();
-    const itemUseMap = getItemUsePermissionMap(); // 获取最新的映射
-
-    // 不在区域内直接允许
-    const areasAtPos = getPriorityAreasAtPosition(pos, areaData, spatialIndex);
-    if (areasAtPos.length === 0) {
-        return true;
-    }
-    logDebug(`玩家 ${player.name} 尝试使用物品 ${item.type} at (${pos.x}, ${pos.y}, ${pos.z})`);
-
-    // 检查特殊物品
-    for (const mapping of itemUseMap) {
-        if (mapping.types && matchesIdPattern(item.type, mapping.types)) {
-            logDebug(`检测到使用特殊物品 ${item.type}，检查权限 ${mapping.permission.id}`);
-            return handlePermissionCheck(player, pos, mapping.permission.id, `使用物品 ${item.type}`, mapping.message);
-        }
-    }
-
-    // 如果不是特殊物品，检查通用使用物品权限
-    logDebug(`未匹配特殊物品，检查通用权限 ${PERMISSIONS.USE_ITEM.id}`);
-    return handlePermissionCheck(player, pos, PERMISSIONS.USE_ITEM.id, "使用物品", "§c你没有权限在此区域使用物品！");
-});
-
-mc.listen("onUseItemOn", (player, item, block, side, pos) => {
-    const blockPos = block.pos; // 使用方块位置
-    const areaData = getAreaData();
-    const spatialIndex = getSpatialIndex();
-    const itemOnBlockMap = getItemOnBlockPermissionMap(); // 获取最新的映射
-    const currentConfig = loadConfig(); // 获取最新配置
-
-    // 不在区域内直接允许
-    const areasAtPos = getPriorityAreasAtPosition(blockPos, areaData, spatialIndex);
-    if (areasAtPos.length === 0) {
-        return true;
-    }
-    logDebug(`玩家 ${player.name} 尝试对方块 ${block.type} 使用物品 ${item.type} at (${blockPos.x}, ${blockPos.y}, ${blockPos.z})`);
-
-    //检查放置矿车
-    if (currentConfig.itemTypes?.minecarts && matchesIdPattern(item.type, currentConfig.itemTypes.minecarts) &&
-        currentConfig.blockTypes?.rails && matchesIdPattern(block.type, currentConfig.blockTypes.rails)) {
-        logDebug(`检测到放置矿车，检查权限 ${PERMISSIONS.PLACE_MINECART.id}`);
-        return handlePermissionCheck(player, blockPos, PERMISSIONS.PLACE_MINECART.id, "放置矿车", "§c你没有权限在此区域放置矿车！");
-    }
-
-
-    // 检查特殊交互 (物品+方块 或 仅方块) - 原有逻辑
-    for (const mapping of itemOnBlockMap) {
-        const blockMatch = mapping.blockTypes && matchesIdPattern(block.type, mapping.blockTypes);
-        // 如果 itemTypes 未定义，则只匹配方块；否则需要物品和方块都匹配
-        const itemMatch = !mapping.itemTypes || matchesIdPattern(item.type, mapping.itemTypes);
-
-        if (blockMatch && itemMatch) {
-             logDebug(`检测到特殊交互: item ${item.type} on block ${block.type}，检查权限 ${mapping.permission.id}`);
-             return handlePermissionCheck(player, blockPos, mapping.permission.id, `对方块 ${block.type} 使用物品 ${item.type}`, mapping.message);
-        }
-    }
-
-    // 如果不是特殊交互，检查通用对方块使用物品权限
-    logDebug(`未匹配特殊交互，检查通用权限 ${PERMISSIONS.USE_ITEM_ON_BLOCK.id}`);
-    return handlePermissionCheck(player, blockPos, PERMISSIONS.USE_ITEM_ON_BLOCK.id, `对方块 ${block.type} 使用物品`, "§c你没有权限在此区域对方块使用物品！");
-});
-
-mc.listen("onBedEnter", (player, pos) => {
-    return handlePermissionCheck(player, pos, PERMISSIONS.USE_BED.id, "使用床", "§c你没有权限在此区域使用床！");
-});
-
-mc.listen("onPlayerPullFishingHook", (player, entity, item) => {
-    // 权限检查基于被钓起实体的位置
-    return handlePermissionCheck(player, entity.pos, PERMISSIONS.USE_FISHING_ROD.id, "使用钓鱼竿钓起实体", "§c你没有权限在此区域使用钓鱼竿！");
-});
-
-mc.listen("onPlayerInteractEntity", (player, entity) => { // 移除 pos 参数，使用 entity.pos
-    const pos = entity.pos;
-    const areaData = getAreaData();
-    const spatialIndex = getSpatialIndex();
-    const currentConfig = loadConfig(); // 获取最新配置
-
-    logDebug(`玩家 ${player.name} 尝试与实体 ${entity.type} 交互 at (${pos.x}, ${pos.y}, ${pos.z})`);
-
-    const interactMappings = [
-        { types: currentConfig.entityTypes?.villagers, permission: PERMISSIONS.INTERACT_VILLAGER, name: "村民", message: "§c你没有权限在此区域与村民交互！" },
-        { types: currentConfig.entityTypes?.chestBoats, permission: PERMISSIONS.INTERACT_CHEST_BOAT, name: "船箱", message: "§c你没有权限在此区域与船箱交互！" },
-        { types: currentConfig.entityTypes?.chestMinecarts, permission: PERMISSIONS.INTERACT_CHEST_MINECART, name: "矿车箱子", message: "§c你没有权限在此区域与矿车箱子交互！" },
-        // 可以添加其他可交互实体类型
-    ];
-
-    let specificPermissionId = null;
-    let specificDenialMessage = null;
-
-    for (const mapping of interactMappings) {
-        if (mapping.types && matchesIdPattern(entity.type, mapping.types)) {
-            specificPermissionId = mapping.permission.id;
-            specificDenialMessage = mapping.message;
-            logDebug(`检测到特定可交互实体 ${mapping.name}，检查权限 ${specificPermissionId}`);
-            break;
-        }
-    }
-
-    // 优先处理特定类型
-    if (specificPermissionId) {
-        const hasSpecificPerm = checkPriorityPermission(player, pos, specificPermissionId, areaData, spatialIndex);
-        logDebug(`特定交互权限 ${specificPermissionId} 检查结果: ${hasSpecificPerm}`);
-
-        if (!hasSpecificPerm) {
-            // 如果特定权限被拒绝，则直接拒绝，并提示特定信息
-            logDebug(`特定交互权限 ${specificPermissionId} 被拒绝，操作不允许`);
-            const areasAtPos = getPriorityAreasAtPosition(pos, areaData, spatialIndex);
-            if (areasAtPos.length > 0) {
-                 player.tell(specificDenialMessage || "§c你没有权限在此区域与此实体交互！");
-            }
-            return false;
-        } else {
-             // 如果特定权限允许，则直接允许
-             logDebug(`特定交互权限 ${specificPermissionId} 允许，操作允许`);
-             return true;
-        }
-        // 理由同上：特定权限设置优先，不再回退检查通用权限。
-    }
-
-    // 如果不匹配特定类型，检查通用交互权限
-    logDebug(`未匹配特定可交互实体，检查通用交互权限 ${PERMISSIONS.INTERACT_ENTITY.id}`);
-    // 交互实体通常不提示通用失败
-    const hasGeneralInteractPermission = checkPriorityPermission(player, pos, PERMISSIONS.INTERACT_ENTITY.id, areaData, spatialIndex);
-     logDebug(`通用交互权限 ${PERMISSIONS.INTERACT_ENTITY.id} 检查结果: ${hasGeneralInteractPermission}`);
-     if (!hasGeneralInteractPermission) {
-         // 虽然通常不提示，但还是要返回 false 来阻止交互
-         return false;
-     }
-     return true;
-});
-
-
-mc.listen("onUseFrameBlock", (player, block) => {
-    // 操作展示框通常不提示失败
-    return handlePermissionCheck(player, block.pos, PERMISSIONS.ITEM_FRAME.id, "操作展示框");
-});
-
-iListenAttentively.emplaceListener(
-    "ila::mc::world::actor::player::PlayerEditSignBeforeEvent",
-    event => {
-        const player = iListenAttentively.getPlayer(event["self"]); // 使用 getPlayer 获取 Player 对象
-        if (!player) {
-            logWarning("PlayerEditSignBeforeEvent: 无法获取玩家对象");
-            event["cancelled"] = true; // 获取不到玩家则阻止
-            return;
         }
 
-        const signPosArray = event["pos"];
-        if (!signPosArray || signPosArray.length < 3) {
-            logWarning(`PlayerEditSignBeforeEvent: 无效的告示牌位置 for player ${player.name}`);
-            event["cancelled"] = true; // 位置无效则阻止
-            return;
-        }
+        // 优先处理特定类型
+        if (specificPermissionId) {
+            const hasSpecificPerm = checkPriorityPermission(player, pos, specificPermissionId, areaData, spatialIndex);
+            logDebug(`特定骑乘权限 ${specificPermissionId} 检查结果: ${hasSpecificPerm}`);
 
-        // 构建位置对象，使用玩家当前的维度ID（假设编辑时玩家和告示牌在同一维度）
-        const pos = {
-            x: signPosArray[0],
-            y: signPosArray[1],
-            z: signPosArray[2],
-            dimid: player.pos.dimid // 使用玩家维度
-        };
-
-        logDebug(`玩家 ${player.name} 尝试编辑告示牌 at (${pos.x}, ${pos.y}, ${pos.z})`);
-
-        // 调用权限检查函数
-        const hasPermission = handlePermissionCheck(
-            player,
-            pos,
-            PERMISSIONS.USE_SIGN.id, // 使用 USE_SIGN 权限
-            "编辑告示牌",
-            "§c你没有权限在此区域编辑告示牌！" // 权限不足提示
-        );
-
-        if (!hasPermission) {
-            logDebug(`玩家 ${player.name} 编辑告示牌权限不足，操作被阻止`);
-            event["cancelled"] = true; // 权限不足，拦截事件
-        } else {
-            logDebug(`玩家 ${player.name} 允许编辑告示牌`);
-            // 权限足够，不需要设置 event["cancelled"] = false，默认不拦截
-        }
-    },
-    iListenAttentively.EventPriority.High // 保持高优先级以确保先执行权限检查
-);
-
-iListenAttentively.emplaceListener(
-    "ila::mc::world::actor::MobHurtEffectBeforeEvent",
-    event => {
-                if (!event["source"]) {
-                    logDebug("药水伤害事件缺少来源信息，允许事件继续。");
-                    return; // 如果没有来源信息，默认允许
+            if (!hasSpecificPerm) {
+                // 如果特定权限被拒绝，则直接拒绝，并提示特定信息
+                logDebug(`特定骑乘权限 ${specificPermissionId} 被拒绝，操作不允许`);
+                const areasAtPos = getPriorityAreasAtPosition(pos, areaData, spatialIndex);
+                if (areasAtPos.length > 0) {
+                     player.tell(specificDenialMessage || "§c你没有权限在此区域骑乘此实体！");
                 }
-        
-        const targetEntity = iListenAttentively.getActor(event["self"]); 
-        const sourceActor = iListenAttentively.getActor(event["source"]); 
-
-        if (!sourceActor || !sourceActor.isPlayer()) {
-            return; 
+                return false;
+            } else {
+                 // 如果特定权限允许，则直接允许
+                 logDebug(`特定骑乘权限 ${specificPermissionId} 允许，操作允许`);
+                 return true;
+            }
+            // 注意：这里不再回退检查通用权限。特定权限的设置（允许或拒绝）具有最高优先级。
+            // 如果特定权限没有显式设置，checkPriorityPermission 会根据继承规则返回结果，
+            // 如果继承结果是允许，就在上面返回 true 了。如果继承结果是拒绝，就在上面返回 false 了。
+            // 只有完全不匹配特定类型时，才检查通用权限。
         }
 
-        const player = sourceActor.toPlayer(); 
+        // 如果不匹配特定类型，检查通用骑乘权限
+        logDebug(`未匹配特定可骑乘实体，检查通用骑乘权限 ${PERMISSIONS.RIDE_ENTITY.id}`);
+        const hasGeneralRidePermission = checkPriorityPermission(player, pos, PERMISSIONS.RIDE_ENTITY.id, areaData, spatialIndex);
+        logDebug(`通用骑乘权限 ${PERMISSIONS.RIDE_ENTITY.id} 检查结果: ${hasGeneralRidePermission}`);
+        if (!hasGeneralRidePermission) {
+            const areasAtPos = getPriorityAreasAtPosition(pos, areaData, spatialIndex);
+            if (areasAtPos.length > 0) {
+                player.tell("§c你没有权限在此区域骑乘此实体！",4); // 通用失败提示
+                return false;
+            }
+        }
+        return hasGeneralRidePermission;
+    });
+}
 
-        if (!targetEntity) {
-            logWarning(`MobHurtEffectBeforeEvent: 无法获取目标实体 for player ${player.name}`);
-            event["cancelled"] = true; 
-            return;
+if (config.listenerControl.onChangeArmorStand) {
+    mc.listen("onChangeArmorStand", (armorStand, player, slot) => {
+        return handlePermissionCheck(player, armorStand.pos, PERMISSIONS.ARMOR_STAND.id, "操作盔甲架", "§c你没有权限在此区域操作盔甲架！");
+    });
+}
+
+if (config.listenerControl.onAttackEntity) {
+    mc.listen("onAttackEntity", (player, entity) => {
+        return handleAttackPermission(player, entity);
+    });
+}
+
+if (config.listenerControl.onMobHurt) {
+    mc.listen("onMobHurt", (mob, source, damage, cause) => {
+        if (!source || !source.isPlayer()) return true; // 只处理玩家造成的伤害
+        const player = source.toPlayer();
+        // 注意：这里复用 handleAttackPermission，它内部会检查权限并可能发送消息
+        // onMobHurt 通常不需要单独发送 "你没有权限攻击" 的消息，因为 onAttackEntity 可能已经发送了
+        // 但我们需要阻止伤害，所以返回 handleAttackPermission 的结果
+        return handleAttackPermission(player, mob);
+    });
+}
+
+if (config.listenerControl.onAttackBlock) {
+    mc.listen("onAttackBlock", (player, block, item) => {
+        const pos = block.pos;
+        const currentConfig = loadConfig(); // 获取最新配置
+
+        // 优先检查龙蛋交互
+        if (currentConfig.blockTypes?.dragonEgg && matchesIdPattern(block.type, currentConfig.blockTypes.dragonEgg)) {
+            logDebug("检测到攻击龙蛋");
+            return handlePermissionCheck(player, pos, PERMISSIONS.INTERACT_DRAGON_EGG.id, "攻击龙蛋", "§c你没有权限操作这个龙蛋！");
         }
 
-        const pos = targetEntity.pos; 
+        // 检查通用攻击方块权限 (攻击失败通常不提示)
+        return handlePermissionCheck(player, pos, PERMISSIONS.ATTACK_BLOCK.id, "攻击方块");
+    });
+}
 
-        // 检查位置是否有效
-        if (!pos || pos.x === undefined || pos.y === undefined || pos.z === undefined || pos.dimid === undefined) {
-            logWarning(`MobHurtEffectBeforeEvent: 目标实体位置无效 for player ${player.name}`);
-            event["cancelled"] = true; 
-            return;
+if (config.listenerControl.onUseItem) {
+    mc.listen("onUseItem", (player, item) => {
+        const pos = player.pos; // 使用玩家位置
+        const areaData = getAreaData();
+        const spatialIndex = getSpatialIndex();
+        const itemUseMap = getItemUsePermissionMap(); // 获取最新的映射
+
+        // 不在区域内直接允许
+        const areasAtPos = getPriorityAreasAtPosition(pos, areaData, spatialIndex);
+        if (areasAtPos.length === 0) {
+            return true;
+        }
+        logDebug(`玩家 ${player.name} 尝试使用物品 ${item.type} at (${pos.x}, ${pos.y}, ${pos.z})`);
+
+        // 检查特殊物品
+        for (const mapping of itemUseMap) {
+            if (mapping.types && matchesIdPattern(item.type, mapping.types)) {
+                logDebug(`检测到使用特殊物品 ${item.type}，检查权限 ${mapping.permission.id}`);
+                return handlePermissionCheck(player, pos, mapping.permission.id, `使用物品 ${item.type}`, mapping.message);
+            }
         }
 
-        logDebug(`玩家 ${player.name} 尝试对实体 ${targetEntity.type} (${targetEntity.uniqueId}) 造成魔法伤害 at (${pos.x}, ${pos.y}, ${pos.z})，检查攻击权限`);
+        // 如果不是特殊物品，检查通用使用物品权限
+        logDebug(`未匹配特殊物品，检查通用权限 ${PERMISSIONS.USE_ITEM.id}`);
+        return handlePermissionCheck(player, pos, PERMISSIONS.USE_ITEM.id, "使用物品", "§c你没有权限在此区域使用物品！");
+    });
+}
 
-        // 复用 handleAttackPermission 函数检查权限
-        const hasPermission = handleAttackPermission(player, targetEntity);
+if (config.listenerControl.onUseItemOn) {
+    mc.listen("onUseItemOn", (player, item, block, side, pos) => {
+        const blockPos = block.pos; // 使用方块位置
+        const areaData = getAreaData();
+        const spatialIndex = getSpatialIndex();
+        const itemOnBlockMap = getItemOnBlockPermissionMap(); // 获取最新的映射
+        const currentConfig = loadConfig(); // 获取最新配置
 
-        if (!hasPermission) {
-            logDebug(`玩家 ${player.name} 对实体 ${targetEntity.type} 的魔法伤害权限不足，操作被阻止`);
-            event["cancelled"] = true; // 权限不足，拦截事件 (阻止魔法伤害)
-            // 注意：handleAttackPermission 内部可能会发送提示消息，这里不再重复发送
-        } else {
-            logDebug(`玩家 ${player.name} 允许对实体 ${targetEntity.type} 造成魔法伤害`);
-            // 权限足够，不需要设置 event["cancelled"] = false，默认不拦截
+        // 不在区域内直接允许
+        const areasAtPos = getPriorityAreasAtPosition(blockPos, areaData, spatialIndex);
+        if (areasAtPos.length === 0) {
+            return true;
         }
-    },
-    iListenAttentively.EventPriority.Highest // 使用最高优先级确保在其他效果前检查
-);
+        logDebug(`玩家 ${player.name} 尝试对方块 ${block.type} 使用物品 ${item.type} at (${blockPos.x}, ${blockPos.y}, ${blockPos.z})`);
+
+        //检查放置矿车
+        if (currentConfig.itemTypes?.minecarts && matchesIdPattern(item.type, currentConfig.itemTypes.minecarts) &&
+            currentConfig.blockTypes?.rails && matchesIdPattern(block.type, currentConfig.blockTypes.rails)) {
+            logDebug(`检测到放置矿车，检查权限 ${PERMISSIONS.PLACE_MINECART.id}`);
+            return handlePermissionCheck(player, blockPos, PERMISSIONS.PLACE_MINECART.id, "放置矿车", "§c你没有权限在此区域放置矿车！");
+        }
+
+
+        // 检查特殊交互 (物品+方块 或 仅方块) - 原有逻辑
+        for (const mapping of itemOnBlockMap) {
+            const blockMatch = mapping.blockTypes && matchesIdPattern(block.type, mapping.blockTypes);
+            // 如果 itemTypes 未定义，则只匹配方块；否则需要物品和方块都匹配
+            const itemMatch = !mapping.itemTypes || (item && !item.isNull() && matchesIdPattern(item.type, mapping.itemTypes)); // Check item exists
+
+            if (blockMatch && itemMatch) {
+                 logDebug(`检测到特殊交互: item ${item?.type || 'none'} on block ${block.type}，检查权限 ${mapping.permission.id}`);
+                 return handlePermissionCheck(player, blockPos, mapping.permission.id, `对方块 ${block.type} 使用物品 ${item?.type || 'none'}`, mapping.message);
+            }
+        }
+
+        // 如果不是特殊交互，检查通用对方块使用物品权限
+        logDebug(`未匹配特殊交互，检查通用权限 ${PERMISSIONS.USE_ITEM_ON_BLOCK.id}`);
+        return handlePermissionCheck(player, blockPos, PERMISSIONS.USE_ITEM_ON_BLOCK.id, `对方块 ${block.type} 使用物品`, "§c你没有权限在此区域对方块使用物品！");
+    });
+}
+
+if (config.listenerControl.onBedEnter) {
+    mc.listen("onBedEnter", (player, pos) => {
+        return handlePermissionCheck(player, pos, PERMISSIONS.USE_BED.id, "使用床", "§c你没有权限在此区域使用床！");
+    });
+}
+
+if (config.listenerControl.onPlayerPullFishingHook) {
+    mc.listen("onPlayerPullFishingHook", (player, entity, item) => {
+        // 权限检查基于被钓起实体的位置
+        return handlePermissionCheck(player, entity.pos, PERMISSIONS.USE_FISHING_ROD.id, "使用钓鱼竿钓起实体", "§c你没有权限在此区域使用钓鱼竿！");
+    });
+}
+
+if (config.listenerControl.onPlayerInteractEntity) { // 用户请求
+    mc.listen("onPlayerInteractEntity", (player, entity) => { // 移除 pos 参数，使用 entity.pos
+        const pos = entity.pos;
+        const areaData = getAreaData();
+        const spatialIndex = getSpatialIndex();
+        const currentConfig = loadConfig(); // 获取最新配置
+
+        logDebug(`玩家 ${player.name} 尝试与实体 ${entity.type} 交互 at (${pos.x}, ${pos.y}, ${pos.z})`);
+
+        const interactMappings = [
+            { types: currentConfig.entityTypes?.villagers, permission: PERMISSIONS.INTERACT_VILLAGER, name: "村民", message: "§c你没有权限在此区域与村民交互！" },
+            { types: currentConfig.entityTypes?.chestBoats, permission: PERMISSIONS.INTERACT_CHEST_BOAT, name: "船箱", message: "§c你没有权限在此区域与船箱交互！" },
+            { types: currentConfig.entityTypes?.chestMinecarts, permission: PERMISSIONS.INTERACT_CHEST_MINECART, name: "矿车箱子", message: "§c你没有权限在此区域与矿车箱子交互！" },
+            // 可以添加其他可交互实体类型
+        ];
+
+        let specificPermissionId = null;
+        let specificDenialMessage = null;
+
+        for (const mapping of interactMappings) {
+            if (mapping.types && matchesIdPattern(entity.type, mapping.types)) {
+                specificPermissionId = mapping.permission.id;
+                specificDenialMessage = mapping.message;
+                logDebug(`检测到特定可交互实体 ${mapping.name}，检查权限 ${specificPermissionId}`);
+                break;
+            }
+        }
+
+        // 优先处理特定类型
+        if (specificPermissionId) {
+            const hasSpecificPerm = checkPriorityPermission(player, pos, specificPermissionId, areaData, spatialIndex);
+            logDebug(`特定交互权限 ${specificPermissionId} 检查结果: ${hasSpecificPerm}`);
+
+            if (!hasSpecificPerm) {
+                // 如果特定权限被拒绝，则直接拒绝，并提示特定信息
+                logDebug(`特定交互权限 ${specificPermissionId} 被拒绝，操作不允许`);
+                const areasAtPos = getPriorityAreasAtPosition(pos, areaData, spatialIndex);
+                if (areasAtPos.length > 0) {
+                     player.tell(specificDenialMessage || "§c你没有权限在此区域与此实体交互！");
+                }
+                return false;
+            } else {
+                 // 如果特定权限允许，则直接允许
+                 logDebug(`特定交互权限 ${specificPermissionId} 允许，操作允许`);
+                 return true;
+            }
+            // 理由同上：特定权限设置优先，不再回退检查通用权限。
+        }
+
+        // 如果不匹配特定类型，检查通用交互权限
+        logDebug(`未匹配特定可交互实体，检查通用交互权限 ${PERMISSIONS.INTERACT_ENTITY.id}`);
+        // 交互实体通常不提示通用失败
+        const hasGeneralInteractPermission = checkPriorityPermission(player, pos, PERMISSIONS.INTERACT_ENTITY.id, areaData, spatialIndex);
+         logDebug(`通用交互权限 ${PERMISSIONS.INTERACT_ENTITY.id} 检查结果: ${hasGeneralInteractPermission}`);
+         if (!hasGeneralInteractPermission) {
+             // 虽然通常不提示，但还是要返回 false 来阻止交互
+             return false;
+         }
+         return true;
+    });
+}
+
+
+if (config.listenerControl.onUseFrameBlock) {
+    mc.listen("onUseFrameBlock", (player, block) => {
+        // 操作展示框通常不提示失败
+        return handlePermissionCheck(player, block.pos, PERMISSIONS.ITEM_FRAME.id, "操作展示框");
+    });
+}
+
+if (config.listenerControl.onEditSign) { // 需要 ila
+    try { // Add try-catch for ila listener
+        iListenAttentively.emplaceListener(
+            "ila::mc::world::actor::player::PlayerEditSignBeforeEvent",
+            event => {
+                const player = iListenAttentively.getPlayer(event["self"]); // 使用 getPlayer 获取 Player 对象
+                if (!player) {
+                    logWarning("PlayerEditSignBeforeEvent: 无法获取玩家对象");
+                    event["cancelled"] = true; // 获取不到玩家则阻止
+                    return;
+                }
+
+                const signPosArray = event["pos"];
+                if (!signPosArray || signPosArray.length < 3) {
+                    logWarning(`PlayerEditSignBeforeEvent: 无效的告示牌位置 for player ${player.name}`);
+                    event["cancelled"] = true; // 位置无效则阻止
+                    return;
+                }
+
+                // 构建位置对象，使用玩家当前的维度ID（假设编辑时玩家和告示牌在同一维度）
+                const pos = {
+                    x: signPosArray[0],
+                    y: signPosArray[1],
+                    z: signPosArray[2],
+                    dimid: player.pos.dimid // 使用玩家维度
+                };
+
+                logDebug(`玩家 ${player.name} 尝试编辑告示牌 at (${pos.x}, ${pos.y}, ${pos.z})`);
+
+                // 调用权限检查函数
+                const hasPermission = handlePermissionCheck(
+                    player,
+                    pos,
+                    PERMISSIONS.USE_SIGN.id, // 使用 USE_SIGN 权限
+                    "编辑告示牌",
+                    "§c你没有权限在此区域编辑告示牌！" // 权限不足提示
+                );
+
+                if (!hasPermission) {
+                    logDebug(`玩家 ${player.name} 编辑告示牌权限不足，操作被阻止`);
+                    event["cancelled"] = true; // 权限不足，拦截事件
+                } else {
+                    logDebug(`玩家 ${player.name} 允许编辑告示牌`);
+                    // 权限足够，不需要设置 event["cancelled"] = false，默认不拦截
+                }
+            },
+            iListenAttentively.EventPriority.High // 保持高优先级以确保先执行权限检查
+        );
+    } catch (e) {
+        logError(`Failed to register ila::mc::world::actor::player::PlayerEditSignBeforeEvent listener: ${e.message}`);
+    }
+}
+
+if (config.listenerControl.mobHurtEffect) { // 用户请求 (ila)
+    try { // Add try-catch for ila listener
+        iListenAttentively.emplaceListener(
+            "ila::mc::world::actor::MobHurtEffectBeforeEvent",
+            event => {
+                        if (!event["source"]) {
+                            logDebug("药水伤害事件缺少来源信息，允许事件继续。");
+                            return; // 如果没有来源信息，默认允许
+                        }
+
+                const targetEntity = iListenAttentively.getActor(event["self"]);
+                const sourceActor = iListenAttentively.getActor(event["source"]);
+
+                if (!sourceActor || !sourceActor.isPlayer()) {
+                    return;
+                }
+
+                const player = sourceActor.toPlayer();
+
+                if (!targetEntity) {
+                    logWarning(`MobHurtEffectBeforeEvent: 无法获取目标实体 for player ${player.name}`);
+                    event["cancelled"] = true;
+                    return;
+                }
+
+                const pos = targetEntity.pos;
+
+                // 检查位置是否有效
+                if (!pos || pos.x === undefined || pos.y === undefined || pos.z === undefined || pos.dimid === undefined) {
+                    logWarning(`MobHurtEffectBeforeEvent: 目标实体位置无效 for player ${player.name}`);
+                    event["cancelled"] = true;
+                    return;
+                }
+
+                logDebug(`玩家 ${player.name} 尝试对实体 ${targetEntity.type} (${targetEntity.uniqueId}) 造成魔法伤害 at (${pos.x}, ${pos.y}, ${pos.z})，检查攻击权限`);
+
+                // 复用 handleAttackPermission 函数检查权限
+                const hasPermission = handleAttackPermission(player, targetEntity);
+
+                if (!hasPermission) {
+                    logDebug(`玩家 ${player.name} 对实体 ${targetEntity.type} 的魔法伤害权限不足，操作被阻止`);
+                    event["cancelled"] = true; // 权限不足，拦截事件 (阻止魔法伤害)
+                    // 注意：handleAttackPermission 内部可能会发送提示消息，这里不再重复发送
+                } else {
+                    logDebug(`玩家 ${player.name} 允许对实体 ${targetEntity.type} 造成魔法伤害`);
+                    // 权限足够，不需要设置 event["cancelled"] = false，默认不拦截
+                }
+            },
+            iListenAttentively.EventPriority.Highest // 使用最高优先级确保在其他效果前检查
+        );
+    } catch (e) {
+        logError(`Failed to register ila::mc::world::actor::MobHurtEffectBeforeEvent listener: ${e.message}`);
+    }
+}
 /**
  * 跟踪玩家位置并处理区域进入权限
  * @param {Player} player - 要检查的玩家
@@ -692,7 +742,7 @@ function handlePlayerMovement(player) {
                 const safePos = getSafePosition(playerUUID);
                 if (safePos) {
                     logInfo(`玩家 ${player.name} 没有权限进入区域 ${currentPriorityArea.area.name}，传送回 (${safePos.x.toFixed(1)}, ${safePos.y.toFixed(1)}, ${safePos.z.toFixed(1)})`);
-                    player.tell("§c你没有权限进入此区域！");
+                    player.tell("§c你没有权限进入此区域！",4);
 
                     // 尝试传送
                     const success = player.teleport(safePos.x, safePos.y, safePos.z, safePos.dimid);
@@ -749,15 +799,15 @@ function updatePositionHistory(uuid, pos) {
         z: pos.z,
         dimid: pos.dimid
     };
-    
+
     // 如果需要则初始化
     if (!playerPositionHistory[uuid]) {
         playerPositionHistory[uuid] = [];
     }
-    
+
     // 添加新位置
     playerPositionHistory[uuid].push(posCopy);
-    
+
     // 只保留最后5个位置以避免内存膨胀
     if (playerPositionHistory[uuid].length > 5) {
         playerPositionHistory[uuid].shift();
@@ -773,7 +823,7 @@ function getSafePosition(uuid) {
     if (!playerPositionHistory[uuid] || playerPositionHistory[uuid].length < 2) {
         return null; // 还没有历史记录
     }
-    
+
     // 获取之前的安全位置(倒数第二个位置)
     // 这通常在受限区域之外
     return playerPositionHistory[uuid][playerPositionHistory[uuid].length - 2];
@@ -787,12 +837,85 @@ mc.listen("onLeft", (player) => {
 });
 
 
-// 设置定时器定期检查玩家位置
-setInterval(() => {
-    const players = mc.getOnlinePlayers();
-    players.forEach(player => {
-        handlePlayerMovement(player);
-    });
-}, 500); // 比区域显示更频繁地检查，例如每500毫秒
+// 设置定时器定期检查玩家位置 (控制 enter_area 权限)
+if (config.listenerControl.playerMovementCheck) {
+    setInterval(() => {
+        const players = mc.getOnlinePlayers();
+        players.forEach(player => {
+            handlePlayerMovement(player);
+        });
+    }, 500); // 比区域显示更频繁地检查，例如每500毫秒
+}
 
-// mc.listen("onBlockInteracted", ...) // 这个事件似乎与 onUseItemOn 重复，暂时注释掉
+// 新增：监听方块交互事件，补充 onUseItemOn 的检查
+if (config.listenerControl.onBlockInteracted) { // 用户请求
+    mc.listen("onBlockInteracted", (player, block) => {
+        const blockPos = block.pos;
+        const areaData = getAreaData();
+        const spatialIndex = getSpatialIndex();
+        const itemOnBlockMap = getItemOnBlockPermissionMap(); // 获取最新映射
+        const currentConfig = loadConfig(); // 获取最新配置
+
+        // 检查是否在保护区域内
+        const areasAtPos = getPriorityAreasAtPosition(blockPos, areaData, spatialIndex);
+        if (areasAtPos.length === 0) {
+            logDebug(`onBlockInteracted: 交互位置 (${blockPos.x}, ${blockPos.y}, ${blockPos.z}) 不在保护区内，允许操作。`);
+            return true; // 不在保护区，允许
+        }
+
+        // 1. 优先检查仅与方块相关的交互 (不需要获取手持物品)
+        for (const mapping of itemOnBlockMap) {
+            const blockMatch = mapping.blockTypes && matchesIdPattern(block.type, mapping.blockTypes);
+            // 检查是否为仅方块交互规则 (itemTypes 未定义)
+            const isBlockOnlyInteraction = !mapping.itemTypes;
+
+            if (blockMatch && isBlockOnlyInteraction) {
+                 logDebug(`onBlockInteracted: 匹配到仅方块交互: block ${block.type}，检查权限 ${mapping.permission.id}`);
+                 // 无论玩家是否持有物品，都检查此权限
+                 return handlePermissionCheck(player, blockPos, mapping.permission.id, `与方块 ${block.type} 交互 (via onBlockInteracted)`, mapping.message);
+            }
+        }
+
+        // 2. 如果没有匹配到仅方块的规则，再获取手持物品进行检查
+        const item = player.getHand();
+
+        // 检查玩家是否手持物品
+        if (item && !item.isNull()) {
+            logDebug(`onBlockInteracted: 玩家 ${player.name} 正在用物品 ${item.type} 与方块 ${block.type} 交互`);
+            logDebug(`onBlockInteracted: 玩家 ${player.name} 在保护区内用 ${item.type} 与 ${block.type} 交互 at (${blockPos.x}, ${blockPos.y}, ${blockPos.z})`);
+
+            // 检查放置矿车
+            if (currentConfig.itemTypes?.minecarts && matchesIdPattern(item.type, currentConfig.itemTypes.minecarts) &&
+                currentConfig.blockTypes?.rails && matchesIdPattern(block.type, currentConfig.blockTypes.rails)) {
+                logDebug(`onBlockInteracted: 检测到放置矿车，检查权限 ${PERMISSIONS.PLACE_MINECART.id}`);
+                return handlePermissionCheck(player, blockPos, PERMISSIONS.PLACE_MINECART.id, "放置矿车 (via onBlockInteracted)", "§c你没有权限在此区域放置矿车！");
+            }
+
+            // 检查 itemOnBlockMap 中定义的特定物品+方块交互
+            for (const mapping of itemOnBlockMap) {
+                const blockMatch = mapping.blockTypes && matchesIdPattern(block.type, mapping.blockTypes);
+                // 仅当 mapping.itemTypes 存在时才匹配物品
+                const itemMatch = mapping.itemTypes && matchesIdPattern(item.type, mapping.itemTypes);
+
+                // 如果物品和方块都匹配映射中的定义
+                if (blockMatch && itemMatch) {
+                     logDebug(`onBlockInteracted: 匹配到特定物品+方块交互: item ${item.type} on block ${block.type}，检查权限 ${mapping.permission.id}`);
+                     return handlePermissionCheck(player, blockPos, mapping.permission.id, `对方块 ${block.type} 使用物品 ${item.type} (via onBlockInteracted)`, mapping.message);
+                }
+            }
+
+            // 如果没有匹配到特定的物品+方块交互，检查通用的 USE_ITEM_ON_BLOCK 权限
+            logDebug(`onBlockInteracted: 未匹配特定物品+方块交互，检查通用权限 ${PERMISSIONS.USE_ITEM_ON_BLOCK.id}`);
+            return handlePermissionCheck(player, blockPos, PERMISSIONS.USE_ITEM_ON_BLOCK.id, `对方块 ${block.type} 使用物品 ${item.type} (via onBlockInteracted)`, "§c你没有权限在此区域对方块使用物品！");
+
+        } else {
+            // 玩家空手，并且没有匹配到仅方块的交互规则
+            // 这通常意味着是打开容器等操作，应由其他监听器处理
+            logDebug(`onBlockInteracted: 玩家 ${player.name} 空手与方块 ${block.type} 交互，且无匹配的仅方块规则。允许事件传递。`);
+            return true; // 允许事件传递给 onOpenContainer 等
+        }
+    });
+}
+
+// 导出模块（如果需要的话，但通常事件处理器不需要导出）
+// module.exports = { ... };

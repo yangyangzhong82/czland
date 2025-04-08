@@ -1,6 +1,6 @@
 // configManager.js
 const CONFIG_PATH = './plugins/area/config.json';
-const CURRENT_VERSION = "1.6.5";
+const CURRENT_VERSION = "1.7.2"; // Increment version due to new config options
 const { logInfo, logError, logDebug } = require('./logger'); // 确保引入 logger
 
 const DEFAULT_CONFIG = {
@@ -8,25 +8,11 @@ const DEFAULT_CONFIG = {
     spatialIndex: {
         chunkSize: 16  // 默认区块大小
     },
-    // 旧的可视化配置，保留用于兼容或未来可能的其他可视化
-    /*
-    visualization: {
-        enabled: true, // 这个可以考虑是否保留，或者合并到 bsci.enabled
-        duration: 30,          // 显示时间，单位为秒
-        color: {
-            r: 0,              // 红色分量
-            g: 191,            // 绿色分量
-            b: 255,            // 蓝色分量
-            a: 255             // 透明度
-        },
-        thickness: 1.5         // 线条粗细
-    },
-    */
     // 新增 BSCI 专用配置
     bsci: {
         enabled: true,         // BSCI 功能总开关
-        duration: 30,          // 显示时间，单位为秒
-        thickness: 1.5,        // 线条粗细
+        duration: 60,          // 显示时间，单位为秒
+        thickness: 0.1,        // 线条粗细
         mainAreaColor: {       // 主区域轮廓颜色
             r: 0,
             g: 191,
@@ -58,20 +44,11 @@ const DEFAULT_CONFIG = {
         teleportCooldown: 5, // 玩家每次传送的冷却时间（秒），0 或负数表示无冷却
         preventTeleportIfInside: true, // 是否阻止玩家传送到他们当前所在的区域
         economy: { // 传送使用的独立经济配置
-            enabled: true, // 是否对传送收费 
+            enabled: false, // 是否对传送收费
             type: "money", // 经济类型: "money", "scoreboard", "czmoney"
             scoreboardObjective: "teleport_cost" // 当type为"scoreboard"时使用的计分板名称
         }
     },
-    shulkerBoxTypes: [
-        "minecraft:shulker_box",
-        "minecraft:undyed_shulker_box"
-    ],
-    anvilTypes: [
-        "minecraft:anvil",
-        "minecraft:chipped_anvil",
-        "minecraft:damaged_anvil"
-    ],
     itemTypes: {
         minecart: [
             "minecraft:minecart",
@@ -189,6 +166,15 @@ const DEFAULT_CONFIG = {
             "minecraft:dirt",
             "minecraft:grass_path",
             "minecraft:coarse_dirt"
+        ],
+        shulkerBox: [
+            "minecraft:shulker_box",
+            "minecraft:undyed_shulker_box"
+        ],
+        anvil: [
+            "minecraft:anvil",
+            "minecraft:chipped_anvil",
+            "minecraft:damaged_anvil"
         ]
     },
     entityTypes: {
@@ -268,7 +254,6 @@ const DEFAULT_CONFIG = {
     areaInfoDisplayDuration: 5,
     maxAreasPerPlayer: 5,
     maxTotalAreaSizePerPlayer: -1, // 玩家可拥有的区域总大小限制 (-1 为不限制)
-    // defaultGroup: "visitor", // 移除此行，不再使用单一的默认组名
     defaultGroupPermissions: [
         "break",
         "place",
@@ -309,14 +294,66 @@ const DEFAULT_CONFIG = {
             z: 200,     // Z轴最大宽度
             volume: 1000000 // 最大体积
         },
-        // 子区域单独配置（如果为null则使用主区域配置）
         subarea: {
             enabled: true,
             min: null,  // 为null时使用主区域配置
             max: null   // 为null时使用主区域配置
         }
-    }
+    },
+    forms: {
+        itemsPerPage: 5 // 表单每页显示的项目数量
+    },
+    // 新增：事件监听器控制
+    listenerControl: {
+        // 核心方块交互
+        onDestroyBlock: true,
+        onPlaceBlock: true,
+        onAttackBlock: true,
+        onBlockInteracted: true, // 用户请求
 
+        // 容器/物品栏交互
+        onOpenContainer: true,
+        onTakeItem: true,
+        onDropItem: true, // 需要 ila 监听器检查
+
+        // 实体交互
+        onAttackEntity: true,
+        onMobHurt: true, // 涵盖玩家来源伤害
+        mobHurtEffect: true, // 用户请求 (魔法/药水效果的 ila 监听器)
+        onPlayerInteractEntity: true, // 用户请求
+        onRide: true,
+        onChangeArmorStand: true,
+        onUseFrameBlock: true,
+
+        // 物品使用
+        onUseItem: true,
+        onUseItemOn: true,
+        onPlayerPullFishingHook: true,
+
+        // 特定方块交互
+        onStepOnPressurePlate: true,
+        onBedEnter: true,
+        onEditSign: true, // 需要 ila 监听器检查
+
+        // 世界事件
+        onMobTrySpawn: true, // 用户请求 (同时在 ruleHandler 中使用此配置)
+        playerMovementCheck: true, // 控制 handlePlayerMovement 的 setInterval (检查 enter_area 权限)
+    },
+    // 新增：规则事件监听器控制
+    ruleListenerControl: {
+        onEntityExplode: true,
+        onBlockExplode: true,
+        onFireSpread: true,
+        fireTryBurnBlock: true, // ila
+        mossGrowth: true, // ila
+        sculkSpread: true, // ila
+        onWitherBossDestroy: true,
+        // onMobTrySpawn 由 listenerControl.onMobTrySpawn 控制
+        dragonEggTeleport: true, // ila
+        fireworkDamage: true, // ila
+        mobGriefing: true, // ila (ActorDestroyBlockEvent)
+        liquidFlow: true // ila
+    }
 };
 
 // --- Iterative Merge Function ---

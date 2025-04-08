@@ -36,6 +36,10 @@ function getGroupPermissions(groupName, creatorUuid) {
  * @returns {object | null} - 返回区域的数据对象，如果区域不存在则返回 null。
  */
 function getAreaInfo(areaId) {
+    // Moved require here to avoid circular dependency
+    const { getAreaData } = require('./czareaprotection');
+    const { logDebug } = require('./logger'); // Ensure logger is available if needed
+
     const areaData = getAreaData(); // 获取所有区域数据
     if (areaData && areaData[areaId]) {
         // 返回指定区域数据的深拷贝，防止外部修改影响内部数据
@@ -50,11 +54,11 @@ function getAreaInfo(areaId) {
 
 // --- Area Management API Functions ---
 
-const { getAreaData, updateAreaData } = require('./czareaprotection'); // Import area data functions
+// Note: require('./czareaprotection') moved into functions below to avoid circular dependency
 const { saveAreaData } = require('./config'); // Import save function
 const { loadConfig } = require('./configManager'); // Import config loader
 const {
-    generateAreaId, // Assuming generateAreaId is moved or accessible here, otherwise define it
+    // generateAreaId is defined locally as _generateAreaId
     checkAreaSizeLimits,
     checkNewAreaOverlap,
     calculatePlayerTotalAreaSize,
@@ -90,6 +94,9 @@ function _generateAreaId() {
  * @returns {Promise<{success: boolean, areaId?: string, error?: string}>} - 包含操作结果的对象，成功时包含 areaId，失败时包含 error 信息。
  */
 async function createArea(creatorPlayer, areaName, point1, point2, parentAreaId = null) {
+    // Moved require here to avoid circular dependency
+    const { getAreaData, updateAreaData } = require('./czareaprotection');
+
     logInfo(`[API] 玩家 ${creatorPlayer.name} 尝试创建区域 "${areaName}"`);
     const config = loadConfig();
     const areaData = getAreaData(); // 获取当前区域数据
@@ -230,6 +237,9 @@ async function createArea(creatorPlayer, areaName, point1, point2, parentAreaId 
  * @returns {Promise<{success: boolean, error?: string}>} - 包含操作结果的对象。
  */
 async function modifyArea(modifierPlayer, areaId, modifications) {
+    // Moved require here to avoid circular dependency
+    const { getAreaData, updateAreaData } = require('./czareaprotection');
+
     logInfo(`[API] 玩家 ${modifierPlayer.name} 尝试修改区域 ${areaId}，修改内容: ${JSON.stringify(modifications)}`);
     const config = loadConfig();
     const areaData = getAreaData(); // 获取最新区域数据
@@ -444,9 +454,148 @@ async function modifyArea(modifierPlayer, areaId, modifications) {
         return { success: true }; // 没有请求或需要进行的修改
     }
 }
+
+
+/**
+ * [内部] 根据提供的数据创建一个新区域，用于数据迁移等场景。
+ * 跳过玩家对象相关的检查（权限、经济、玩家限制）。
+ * @param {string} ownerXuid 区域所有者的 XUID。
+ * @param {string | null} ownerUuid 区域所有者的 UUID (如果可用，否则为 null)。
+ * @param {string} areaName 新区域的名称。
+ * @param {object} point1 第一个角点坐标 {x, y, z}。
+ * @param {object} point2 第二个角点坐标 {x, y, z}。
+ * @param {number} dimid 区域所在的维度 ID。
+ * @param {object | null} teleportData 可选的传送点数据 {x, y, z} (来自旧数据)。
+ * @returns {{success: boolean, areaId?: string, error?: string}} 操作结果。
+ */
+function _internal_createAreaFromData(ownerXuid, ownerUuid, areaName, point1, point2, dimid, teleportData = null) {
+    // Moved require here to avoid circular dependency
+    const { getAreaData, updateAreaData } = require('./czareaprotection');
+
+    logInfo(`[API Internal] 尝试通过数据迁移创建区域 "${areaName}" (所有者 XUID: ${ownerXuid})`);
+    const config = loadConfig();
+    const areaData = getAreaData(); // 获取当前区域数据
+
+    // --- 验证输入 ---
+    if (!areaName || typeof areaName !== 'string' || areaName.trim() === "") {
+        areaName = `区域_${ownerXuid}_${Date.now()}`; // 提供一个默认名称
+        logWarning(`[API Internal] 区域名称无效，使用默认名称: ${areaName}`);
+    }
+     if (!ownerXuid) {
+        return { success: false, error: "所有者 XUID 不能为空" };
+    }
+    if (!point1 || !point2 || dimid === undefined || dimid === null) {
+        return { success: false, error: "无效的坐标点或维度 ID" };
+    }
+    // 确保点坐标顺序正确 (p1 为最小值点, p2 为最大值点)
+    const p1 = {
+        x: Math.min(point1.x, point2.x),
+        y: Math.min(point1.y, point2.y),
+        z: Math.min(point1.z, point2.z),
+        dimid: dimid // 使用传入的 dimid
+    };
+    const p2 = {
+        x: Math.max(point1.x, point2.x),
+        y: Math.max(point1.y, point2.y),
+        z: Math.max(point1.z, point2.z),
+        dimid: dimid // 使用传入的 dimid
+    };
+    const newAreaTemp = { point1: p1, point2: p2, dimid: p1.dimid }; // 用于检查的临时区域对象
+
+    // --- 限制检查 (简化版，跳过玩家特定限制和尺寸限制) ---
+    // 区域尺寸限制 (迁移时跳过)
+    /*
+    const sizeCheck = checkAreaSizeLimits(p1, p2, config, false); // 假设迁移的是主区域
+    if (!sizeCheck.valid) {
+        logError(`[API Internal] 区域 "${areaName}" (所有者: ${ownerXuid}) 尺寸无效: ${sizeCheck.message}，但迁移时将忽略此限制。`);
+        // return { success: false, error: `区域大小无效: ${sizeCheck.message}` }; // 注释掉以忽略限制
+    }
+    */
+    // 区域重叠检查 (仍然需要检查)
+    const overlapCheck = checkNewAreaOverlap(newAreaTemp, areaData, null); // 检查是否与任何现有区域重叠
+    if (overlapCheck.overlapped) {
+        // 检查重叠区域是否与当前尝试创建的区域数据完全一致（可能是重复迁移）
+        const existing = overlapCheck.overlappingArea;
+        if (existing.xuid === ownerXuid &&
+            existing.name === areaName.trim() &&
+            existing.point1.x === p1.x && existing.point1.y === p1.y && existing.point1.z === p1.z &&
+            existing.point2.x === p2.x && existing.point2.y === p2.y && existing.point2.z === p2.z &&
+            existing.dimid === p1.dimid) {
+            logWarning(`[API Internal] 区域 "${areaName}" (ID: ${overlapCheck.overlappingAreaId}) 已存在且数据匹配，跳过重复创建。`);
+            return { success: true, areaId: overlapCheck.overlappingAreaId, message: "区域已存在，跳过创建" };
+        } else {
+            logError(`[API Internal] 无法创建区域 "${areaName}"：与现有区域 "${existing.name}" (ID: ${overlapCheck.overlappingAreaId}) 重叠，且数据不完全匹配。`);
+         return { success: false, error: `无法创建区域：与现有区域 "${existing.name}" 重叠` };
+        }
+    }
+
+    // --- 处理 2D 区域 Y 坐标 ---
+    // 假设 2D 区域在旧数据中使用 -64 到 320 的 Y 范围
+    const minY = -64;
+    const maxY = 320;
+    let finalP1 = { ...p1 }; // 创建副本以修改
+    let finalP2 = { ...p2 };
+
+    if ((p1.y === minY && p2.y === maxY) || (p1.y === maxY && p2.y === minY)) {
+        logDebug(`[API Internal] 检测到可能的 2D 区域 (Y 范围 ${minY}-${maxY})，将强制设置为全高度。`);
+        finalP1.y = minY;
+        finalP2.y = maxY;
+    } else {
+        logDebug(`[API Internal] 处理为 3D 区域，Y 范围: ${p1.y} - ${p2.y}`);
+    }
+
+
+    // --- 创建区域数据 ---
+    const areaId = _generateAreaId(); // 生成新 ID
+    const newAreaData = {
+        name: areaName.trim(),
+        point1: finalP1, // 使用可能调整过 Y 坐标的 p1
+        point2: finalP2, // 使用可能调整过 Y 坐标的 p2
+        dimid: finalP1.dimid, // dimid 不变
+        xuid: ownerXuid,
+        uuid: ownerUuid || null, // 使用提供的 UUID 或 null
+        createTime: Date.now(),
+        price: 0, // 迁移的区域价格设为 0
+        isSubarea: false, // 假设迁移的是主区域
+        parentAreaId: null,
+        priority: 0, // 默认优先级
+        rules: {}, // 初始化空规则对象
+        subareas: {} // 主区域需要 subareas 属性
+    };
+
+    // 处理传送点数据
+    if (teleportData && Array.isArray(teleportData) && teleportData.length === 3) {
+        newAreaData.teleportPoint = {
+            x: teleportData[0],
+            y: teleportData[1],
+            z: teleportData[2],
+            dimid: finalP1.dimid, // 使用区域的维度
+            yaw: 0,         // 默认 Yaw
+            pitch: 0        // 默认 Pitch
+        };
+        logDebug(`[API Internal] 为区域 ${areaId} 设置了迁移的传送点: ${JSON.stringify(newAreaData.teleportPoint)}`);
+    }
+
+
+    // --- 保存与更新 ---
+    const currentAreaData = { ...areaData }; // 创建 areaData 的可变副本
+    currentAreaData[areaId] = newAreaData; // 添加新区域
+
+    if (saveAreaData(currentAreaData)) {
+        logInfo(`[API Internal] 区域 "${areaName}" (ID: ${areaId}) 通过数据迁移创建成功`);
+        updateAreaData(currentAreaData); // 更新内存中的区域数据
+        return { success: true, areaId: areaId };
+    } else {
+        logError(`[API Internal] 创建区域 ${areaId} 后保存区域数据失败`);
+        return { success: false, error: "区域创建成功但保存失败，请检查日志" };
+    }
+}
+
+
 module.exports = {
     getPlayerAreaGroup,
     getGroupPermissions,
+    _internal_createAreaFromData, // Export new internal function
     createArea, // Export new function
     modifyArea,  // Export new function
     getAreaInfo // Export new function

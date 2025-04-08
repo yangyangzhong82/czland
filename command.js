@@ -196,7 +196,7 @@ function handleRemoveAdmin(ori, out, playerName) {
             if (playerInfo.isOnline) {
                 const player = mc.getPlayer(playerInfo.uuid);
                 if (player) {
-                    player.tell("§c你已被移除领地管理员权限！");
+                    //player.tell("§c你已被移除领地管理员权限！");
                 }
             }
             

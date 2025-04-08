@@ -44,18 +44,25 @@ function groupHasAdminPermissions(group) {
 function getPlayerNameCached(uuid) {
     if (!playerNameCache[uuid]) {
         logDebug(`[getPlayerNameCached] 缓存未命中，尝试获取 UUID: ${uuid} 的名称`);
-        const playerDataResult = getOfflinePlayerData(uuid); // 重命名以示区分
-        logDebug(`[getPlayerNameCached] getOfflinePlayerData(${uuid}) 返回: ${playerDataResult ? JSON.stringify(playerDataResult) : 'null'}`);
+            const playerDataResult = getOfflinePlayerData(uuid); // 重命名以示区分
+            logDebug(`[getPlayerNameCached] getOfflinePlayerData(${uuid}) 返回: ${playerDataResult ? JSON.stringify(playerDataResult) : 'null'}`);
 
-        // 检查返回的是否为非空数组，并从中提取名称
-        if (Array.isArray(playerDataResult) && playerDataResult.length > 0 && playerDataResult[0].name) {
-            playerNameCache[uuid] = playerDataResult[0].name; // 从数组的第一个元素获取名称
-            logDebug(`[getPlayerNameCached] 成功从结果中提取名称: ${playerNameCache[uuid]}`);
+            // 更健壮地处理返回结果
+            let foundName = null;
+            if (Array.isArray(playerDataResult) && playerDataResult.length > 0 && playerDataResult[0] && typeof playerDataResult[0].name === 'string') {
+                // 标准情况：返回数组 [{name: ..., ...}]
+                playerNameCache[uuid] = playerDataResult[0].name; // 从数组的第一个元素获取名称
+                logDebug(`[getPlayerNameCached] 成功从结果中提取名称: ${playerNameCache[uuid]}`);
+            } else if (typeof playerDataResult === 'object' && playerDataResult !== null && typeof playerDataResult.name === 'string') {
+                 // 备用情况：直接返回对象 {name: ..., ...}
+                 playerNameCache[uuid] = playerDataResult.name;
+                 logDebug(`[getPlayerNameCached] 成功从直接返回的对象中提取名称: ${playerNameCache[uuid]}`);
+            } else {
+                // 其他无效情况
+                playerNameCache[uuid] = null; // 如果数据无效或名称缺失，则设为 null
+                logDebug(`[getPlayerNameCached] 未能从结果中提取有效名称`);
+            }
         } else {
-            playerNameCache[uuid] = null; // 如果数据无效或名称缺失，则设为 null
-            logDebug(`[getPlayerNameCached] 未能从结果中提取有效名称`);
-        }
-    } else {
         logDebug(`[getPlayerNameCached] 缓存命中 UUID: ${uuid}, 名称: ${playerNameCache[uuid]}`);
     }
     return playerNameCache[uuid];
@@ -257,16 +264,19 @@ function checkPermission(player, areaData, areaId, permission) {
         return true;
     }
     
-    // 如果是区域创建者,赋予所有权限
-    if(area.xuid === player.xuid) {
-        logDebug(`玩家 ${player.name} 是区域创建者，授予所有权限`);
+    // 检查玩家是否是区域所有者 (检查 UUID 或 XUID)
+    const isOwner = (area.uuid && player.uuid === area.uuid) || (area.xuid && player.xuid === area.xuid);
+    if (isOwner) {
+        logDebug(`玩家 ${player.name} 是区域创建者 (UUID 或 XUID 匹配)，授予所有权限`);
         return true;
     }
 
+    // 检查玩家是否是父区域所有者 (检查 UUID 或 XUID)
     if(area.isSubarea && area.parentAreaId) {
         const parentArea = areaData[area.parentAreaId];
-        if(parentArea && parentArea.xuid === player.xuid) {
-            logDebug(`玩家 ${player.name} 是父区域 ${area.parentAreaId} 的创建者，授予子区域所有权限`);
+        const isParentOwner = parentArea && ((parentArea.uuid && player.uuid === parentArea.uuid) || (parentArea.xuid && player.xuid === parentArea.xuid));
+        if(isParentOwner) {
+            logDebug(`玩家 ${player.name} 是父区域 ${area.parentAreaId} 的创建者 (UUID 或 XUID 匹配)，授予子区域所有权限`);
             return true;
         }
     }

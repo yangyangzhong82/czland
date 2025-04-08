@@ -13,6 +13,7 @@ let playerCurrentAreas = {};
 let areaData = {};
 let spatialIndex = {}; // 添加变量来存储空间索引
 let config = {}; // 添加变量来存储加载的配置
+
 // 初始化时连接数据库
 function initializePlugin() {
     // 1. 加载配置
@@ -34,10 +35,21 @@ function initializePlugin() {
         initToolSelector(config); // 将配置传递给需要它的模块
         const { loadAreaAdmins } = require('./areaAdmin');
         loadAreaAdmins();
+
+        // 5. 加载事件处理器 (在配置和核心模块初始化后)
+        // 这些文件内部会根据 config 决定是否注册监听器
+        logInfo("正在加载事件处理器 (基于配置)...");
+        require('./eventHandler');
+        // ruleHandler is required inside eventHandler, no need to require here again if that's the case
+        // Let's double check eventHandler.js content provided earlier... yes, it requires ruleHandler.
+        // require('./ruleHandler'); // ruleHandler 内部也需要 config
+        // require('./apiExports.js'); // Moved to the end of the file to avoid circular dependency issues
+        logInfo("事件处理器加载完成。");
+
+    } else {
+        logError("区域系统数据库初始化失败！插件功能将受限。");
     }
 }
-
-
 
 function getAreaData() {
     return areaData;
@@ -45,14 +57,13 @@ function getAreaData() {
 
 function initializeCommands() {
     const { registerCommands } = require('./command');
-    registerCommands(areaData, 
+    registerCommands(areaData,
         (pl, point1, point2) => {
             showCreateAreaForm(pl, point1, point2, areaData, getPlayerData(), saveAreaData, updateAreaData, checkPlayerArea);
-        }, 
+        },
         saveAreaData
     );
-    require('./eventHandler');
-    require('./apiExports.js'); // Load the dedicated API export module
+    // 事件处理器已在 initializePlugin 中加载
 }
 
 function updateAreaData(newAreaData) {
@@ -69,7 +80,7 @@ setTimeout(initializeCommands, 0);
 
 function checkPlayerArea(pl) {
     const { getPlayerSettings } = require('./playerSettings');
-    const { getPriorityAreasAtPosition } = require('./utils'); 
+    const { getPriorityAreasAtPosition } = require('./utils');
     const settings = getPlayerSettings(pl.uuid);
 
     const pos = pl.pos;
@@ -86,8 +97,6 @@ function checkPlayerArea(pl) {
     const previousAreaId = playerCurrentAreas[pl.uuid];
 
     // 使用空间索引查询获取该位置的所有区域（已按优先级排序）
-    // 注意：这里需要将 spatialIndex 传递给 getPriorityAreasAtPosition
-    // 我们将在下一步修改 utils.js 中的 getPriorityAreasAtPosition 函数来接收它
     const areasAtPos = getPriorityAreasAtPosition(pos, areaData, spatialIndex); // 传递 spatialIndex
 
     if(areasAtPos.length > 0) {
@@ -153,7 +162,7 @@ function checkPlayerArea(pl) {
         }
     } else {
         // 离开所有区域
-        
+
         // 清除ActionBar
         if(settings.displayActionBar) {
             pl.sendText("", 4); // 使用 type 4 清除 action bar
@@ -176,7 +185,7 @@ setInterval(() => {
     players.forEach(checkPlayerArea);
 }, 2000);
 
-initializePlugin();
+initializePlugin(); // 初始化插件，包括加载配置和事件处理器
 
 // 添加一个函数来获取当前的 spatialIndex
 function getSpatialIndex() {
@@ -190,4 +199,5 @@ module.exports = {
     getSpatialIndex, // 导出获取索引的函数
 };
 
-// Initialize API exports by requiring the dedicated module
+// Require apiExports AFTER module.exports is defined to avoid circular dependency issues
+require('./apiExports.js');

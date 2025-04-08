@@ -77,8 +77,12 @@ function showAddMemberForm(player, areaId, origin, currentPage = 0, filter = "")
             p.name.toLowerCase().includes(filter.toLowerCase()));
     }
 
+    // 加载配置
+    const config = loadConfig();
+    const itemsPerPage = config.forms?.itemsPerPage || 5; // 从配置获取，默认5
+
     // 分页设置
-    const pageSize = 5;
+    const pageSize = itemsPerPage; // 使用配置值
     const totalPages = Math.max(1, Math.ceil(filteredPlayers.length / pageSize));
     currentPage = Math.min(currentPage, totalPages - 1);
 
@@ -291,7 +295,9 @@ function showMemberListForm(player, areaId, origin, currentPage = 0, filter = ""
     }
 
     // 5. 分页设置
-    const pageSize = 5;
+    const config = loadConfig(); // 加载配置
+    const itemsPerPage = config.forms?.itemsPerPage || 5; // 从配置获取，默认5
+    const pageSize = itemsPerPage; // 使用配置值
     const totalMembers = filteredMemberUuids.length;
     const totalPages = Math.max(1, Math.ceil(totalMembers / pageSize));
     currentPage = Math.min(currentPage, totalPages - 1); // 确保页码有效
@@ -681,7 +687,9 @@ function showAllPlayersPermissionForm(player, areaId, origin, currentPage = 0, f
     }
 
     // 4. 分页设置
-    const pageSize = 5; // 每页显示5个玩家
+    const config = loadConfig(); // 加载配置
+    const itemsPerPage = config.forms?.itemsPerPage || 5; // 从配置获取，默认5
+    const pageSize = itemsPerPage; // 使用配置值
     const totalMembers = filteredPlayers.length;
     const totalPages = Math.max(1, Math.ceil(totalMembers / pageSize));
     currentPage = Math.min(currentPage, totalPages - 1); // 确保页码有效

@@ -27,7 +27,7 @@ function confirmResizeArea(player, areaId, origin) {
         return;
     }
     if(!playerData[player.uuid] || !playerData[player.uuid].pos1 || !playerData[player.uuid].pos2) {
-        player.tell("§c请先用选区工具设置两个新的边界点！");
+        player.tell("§c请先用选区工具或命令设置两个新的边界点！");
         showAreaOperateForm(player, areaId, origin); // 返回时传递 origin
         return;
     }
@@ -265,8 +265,6 @@ function confirmResizeArea(player, areaId, origin) {
             if (pData[player.uuid]) {
                  delete pData[player.uuid].pos1;
                  delete pData[player.uuid].pos2;
-                 // 注意：直接修改 getPlayerData 返回的对象可能不是最佳实践，取决于其实现
-                 // 如果 getPlayerData 返回的是副本，需要一个保存函数
             }
         } else {
             player.tell("§c更新区域范围失败！");
@@ -620,9 +618,12 @@ function showTransferAreaForm(player, areaId, origin, currentPage = 0, filter = 
     });
     */
 
+    // 加载配置
+    const config = loadConfig();
+    const itemsPerPage = config.forms?.itemsPerPage || 5; // 从配置获取，默认5
 
     // 分页设置
-    const pageSize = 5;
+    const pageSize = itemsPerPage; // 使用配置值
     const totalPages = Math.max(1, Math.ceil(filteredPlayers.length / pageSize));
     currentPage = Math.min(Math.max(0, currentPage), totalPages - 1); // 确保页码有效
 
@@ -712,7 +713,7 @@ function showTransferAreaForm(player, areaId, origin, currentPage = 0, filter = 
     });
 }
 
-// 添加 origin 参数
+
 function showAreaRulesForm(player, areaId, origin) {
     const areaData = getAreaData();
     const area = areaData[areaId];
@@ -759,7 +760,6 @@ function showAreaRulesForm(player, areaId, origin) {
         mobSpawnExceptions: [], // Ensure array exists
     };
 
-    // Apply defaults for missing rules
     for (const ruleKey in defaultRules) {
         if (area.rules[ruleKey] === undefined) {
             area.rules[ruleKey] = defaultRules[ruleKey];
@@ -787,7 +787,7 @@ function showAreaRulesForm(player, areaId, origin) {
         allowFireBurnBlock: "允许火焰烧毁方块",
         allowMossGrowth: "允许苔藓生长",
         allowSculkSpread: "允许幽匿蔓延",
-        allowLiquidFlow: "允许区域外液体流入",
+        allowLiquidFlow: "允许区域液体流出流入",
         allowEntityPressurePlate: "允许实体踩压力板",
         allowEntityRide: "允许生物乘骑",
         allowWitherDestroy: "允许凋灵破坏方块",
