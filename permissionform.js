@@ -217,7 +217,8 @@ function showAddMemberForm(player, areaId, origin, currentPage = 0, filter = "")
                     }
 
                     // 使用原始组名进行设置
-                    if (setPlayerPermission(targetUuid, areaId, groupToSet)) {
+                    // 修改：传递 targetGroupCreatorUuid 和 hasAdminRight
+                    if (setPlayerPermission(targetUuid, areaId, groupToSet, selectedGroupDetails.creatorUuid, hasAdminRight)) {
                         added++;
                     } else {
                          player.tell(`§c为玩家 ${pagePlayers[i].name} 设置权限组 ${selectedGroupDetails.name} (${groupToSet}) 失败。`);
@@ -595,7 +596,8 @@ function showMemberEditForm(player, areaId, targetUuid, origin) {
 
          if (removeMember) {
              // Remove specific permission setting (reverts to default)
-             if (setPlayerPermission(targetUuid, areaId, null)) {
+             // 修改：传递 null 作为 targetGroupCreatorUuid, 并传递 hasAdminRight
+             if (setPlayerPermission(targetUuid, areaId, null, null, hasAdminRight)) {
                  player.tell(`§a已移除 ${targetName} 的特定权限设置，将使用区域默认权限。`);
                  resetCache(); // 清理缓存
              } else {
@@ -631,7 +633,8 @@ function showMemberEditForm(player, areaId, targetUuid, origin) {
 
 
              // 设置新权限 (null 如果选择了 "恢复默认")
-             if (setPlayerPermission(targetUuid, areaId, groupToSet)) {
+             // 修改：传递 selectedGroupDetails.creatorUuid 和 hasAdminRight
+             if (setPlayerPermission(targetUuid, areaId, groupToSet, selectedGroupDetails?.creatorUuid, hasAdminRight)) { // 使用 ?. 防止 selectedGroupDetails 为 null (虽然理论上不会)
                  const groupDisplayName = groupToSet ? (selectedGroupDetails?.name || groupToSet) : '区域默认';
                  player.tell(`§a已将 ${targetName} 的权限设置为: ${groupDisplayName}`);
                  resetCache(); // 清理缓存
@@ -829,7 +832,8 @@ function showAllPlayersPermissionForm(player, areaId, origin, currentPage = 0, f
             player.tell(`§6开始批量移除 ${selectedPlayerIndices.length} 个玩家的特定权限...`);
             for (const index of selectedPlayerIndices) {
                 const targetUuid = playerUuidsOnPage[index];
-                if (setPlayerPermission(targetUuid, areaId, null)) {
+                // 修改：传递 null 作为 targetGroupCreatorUuid, 并传递 hasAdminRight
+                if (setPlayerPermission(targetUuid, areaId, null, null, hasAdminRight)) {
                     successCount++;
                 } else {
                     failCount++;
@@ -867,7 +871,8 @@ function showAllPlayersPermissionForm(player, areaId, origin, currentPage = 0, f
             player.tell(`§6开始批量重置 ${selectedPlayerIndices.length} 个玩家的权限为: ${groupToSetDetails.name}...`);
             for (const index of selectedPlayerIndices) {
                 const targetUuid = playerUuidsOnPage[index];
-                if (setPlayerPermission(targetUuid, areaId, groupToSet)) {
+                // 修改：传递 groupToSetDetails.creatorUuid 和 hasAdminRight
+                if (setPlayerPermission(targetUuid, areaId, groupToSet, groupToSetDetails.creatorUuid, hasAdminRight)) {
                     successCount++;
                 } else {
                     failCount++;

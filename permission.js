@@ -69,46 +69,30 @@ function getPlayerNameCached(uuid) {
 }
 
 
-// 获取所有可用的自定义权限组 (包含创建者信息)
-// 返回格式: { groupName_creatorUuid: { name, permissions, inherit, creatorUuid, creatorName, originalGroupName } }
+// 获取所有可用的自定义权限组的唯一标识符列表
+// 返回格式: ["组名1_创建者UUID1", "组名2_创建者UUID2", ...]
 function getAvailableGroups() {
-    let availableGroups = {};
+    let availableGroupIds = [];
     try {
         // loadCustomGroups 返回格式为 { uuid: { groupName: groupDetails } }
         const allPlayerGroups = loadCustomGroups(); // 使用 loadCustomGroups()
-        logDebug(`[getAvailableGroups] loadCustomGroups 返回 ${Object.keys(allPlayerGroups).length} 个玩家的组`); // <-- 添加日志
+        logDebug(`[getAvailableGroups] loadCustomGroups 返回 ${Object.keys(allPlayerGroups).length} 个玩家的组`);
 
         for (const creatorUuid in allPlayerGroups) {
-            const creatorName = getPlayerNameCached(creatorUuid) || '未知玩家'; // 获取创建者名称
-            // <-- 添加日志 v
-            logDebug(`[getAvailableGroups] 处理 creatorUuid: ${creatorUuid}, 获取到的 creatorName: ${creatorName}`);
             for (const groupName in allPlayerGroups[creatorUuid]) {
-                const groupDetails = allPlayerGroups[creatorUuid][groupName];
                 // 使用 groupName 和 creatorUuid 创建唯一键
                 const uniqueKey = `${groupName}_${creatorUuid}`;
-
-                availableGroups[uniqueKey] = {
-                    ...groupDetails, // 复制组详情
-                    creatorUuid: creatorUuid,
-                    creatorName: creatorName, // 使用获取到的名字或 '未知玩家'
-                    originalGroupName: groupName // 保存原始组名，因为键现在是组合的
-                };
-                 // <-- 添加日志 v
-                 logDebug(`[getAvailableGroups] 添加组: uniqueKey=${uniqueKey}, name=${groupDetails.name}, creatorName=${creatorName}`);
+                availableGroupIds.push(uniqueKey);
+                logDebug(`[getAvailableGroups] 添加组 ID: ${uniqueKey}`);
             }
         }
-
-        if (typeof availableGroups !== 'object' || availableGroups === null) {
-            logWarning("loadCustomGroups() 或处理后的结果不是有效的对象，自定义组可能缺失。");
-            availableGroups = {};
-        }
     } catch (error) {
-        logError(`获取自定义权限组时出错: ${error}`, error.stack);
-        availableGroups = {}; // 出错时返回空对象
+        logError(`获取自定义权限组 ID 时出错: ${error}`, error.stack);
+        availableGroupIds = []; // 出错时返回空数组
     }
 
-    logDebug(`[getAvailableGroups] 最终返回 ${Object.keys(availableGroups).length} 个可用的自定义权限组`); // <-- 修改日志
-    return availableGroups; // 返回包含创建者信息的对象，键是唯一的
+    logDebug(`[getAvailableGroups] 最终返回 ${availableGroupIds.length} 个可用的自定义权限组 ID`);
+    return availableGroupIds; // 返回唯一 ID 字符串数组
 }
 
 
@@ -187,7 +171,7 @@ function setAreaDefaultGroup(areaId, groupName) {
             stmt.bind(areaId);
             stmt.execute();
             // Check affected rows if needed
-            logInfo(`已将区域 ${areaId} 的默认权限设置为系统默认`);
+            logDebug(`已将区域 ${areaId} 的默认权限设置为系统默认`);
         } else {
             // Insert or replace the custom default group
             const stmt = db.prepare(`
@@ -196,7 +180,7 @@ function setAreaDefaultGroup(areaId, groupName) {
             `);
             stmt.bind([areaId, groupName]);
             stmt.execute();
-            logInfo(`成功为区域 ${areaId} 设置默认权限组: ${groupName}`);
+            logDebug(`成功为区域 ${areaId} 设置默认权限组: ${groupName}`);
         }
         // stmt.reset(); // Reset if reusing statement object
 
@@ -246,7 +230,7 @@ function getAreaDefaultGroup(areaId) {
 
 
 
-// 在permission.js中修改checkPermission函数
+
 function checkPermission(player, areaData, areaId, permission) {
     // 定期清理缓存
     cleanupCache();
@@ -475,51 +459,94 @@ function hasPermissionInCustomGroup(customGroups, uuid, groupName, permissionId)
 
 
 // 设置玩家在区域中的权限组
-function setPlayerPermission(playerUuid, areaId, groupName) {
-    // Validation
+// 修改：增加 targetGroupCreatorUuid 和 executorCanGrantAdmin 参数
+function setPlayerPermission(playerUuid, areaId, targetGroupName, targetGroupCreatorUuid, executorCanGrantAdmin) {
+    // Validation - 更新以包含新参数
     if (typeof playerUuid !== 'string' || !playerUuid ||
         typeof areaId !== 'string' || !areaId ||
-        (groupName !== null && typeof groupName !== 'string') // Allow null to remove permission
+        (targetGroupName !== null && typeof targetGroupName !== 'string') || // Allow null to remove permission
+        (targetGroupName !== null && (typeof targetGroupCreatorUuid !== 'string' || !targetGroupCreatorUuid)) || // Require creator UUID if group name is provided
+        typeof executorCanGrantAdmin !== 'boolean' // Validate new boolean flag
        ) {
-        logger.error(`设置玩家权限失败：无效参数 (UUID: ${playerUuid}, AreaID: ${areaId}, GroupName: ${groupName})`);
+        logError(`设置玩家权限失败：无效参数 (UUID: ${playerUuid}, AreaID: ${areaId}, GroupName: ${targetGroupName}, Creator: ${targetGroupCreatorUuid}, ExecutorCanGrant: ${executorCanGrantAdmin})`);
         return false;
     }
+
+    // --- 新增权限检查 ---
+    if (targetGroupName !== null && executorCanGrantAdmin === false) {
+        // 执行者缺少 grantAdminPermissions，检查目标组
+        const targetGroup = getCustomGroupCached(targetGroupCreatorUuid, targetGroupName); // 使用缓存获取组信息
+
+        if (!targetGroup) {
+            // 这个情况理论上应该由调用者处理（确保组存在），但这里加一层保险
+            logError(`设置玩家权限失败：目标权限组 "${targetGroupName}" (创建者: ${targetGroupCreatorUuid}) 不存在或无法加载。`);
+            return false;
+        }
+
+        if (groupHasAdminPermissions(targetGroup)) {
+            logWarning(`权限不足：执行者无权授予包含管理权限的权限组 "${targetGroupName}" 给玩家 ${playerUuid}。`);
+            // 返回 false 表示操作失败
+            return false; // 阻止设置权限
+        }
+
+        // --- 对目标玩家当前组的检查（因无法获取创建者UUID而跳过） ---
+        /*
+        const currentGroupName = getPlayerPermissionCached(playerUuid, areaId);
+        if (currentGroupName) {
+            // 问题: 如何找到 currentGroupName 的创建者 UUID?
+            // 没有数据库结构或复杂查询的更改，无法可靠地实现此检查。
+            // const currentGroup = getCustomGroupCached(currentGroupCreatorUuid, currentGroupName);
+            // if (currentGroup && groupHasAdminPermissions(currentGroup)) {
+            //     logWarning(`权限不足：执行者无权修改已拥有管理权限组的玩家 ${playerUuid} 的权限。`);
+            //     return false;
+            // }
+        }
+        */
+    }
+    // --- 权限检查结束 ---
+
+
+    // 更新缓存 (逻辑保持不变, 仍然只缓存 groupName)
     if (permissionCache[playerUuid]) {
-        if (groupName === null) {
+        if (targetGroupName === null) {
             delete permissionCache[playerUuid][areaId];
         } else {
-            permissionCache[playerUuid][areaId] = groupName;
+            permissionCache[playerUuid][areaId] = targetGroupName; // 缓存目标组名
         }
+        // 如果需要更精细的缓存管理，可以更新时间戳
+        permissionCache[playerUuid]._timestamp = Date.now();
     }
+
+    // 继续执行数据库更新 (使用 targetGroupName)
     try {
         const db = getDbSession();
 
-        if (groupName === null) {
+        if (targetGroupName === null) {
             // Remove the permission entry
             const stmt = db.prepare("DELETE FROM permissions WHERE playerUuid = ? AND areaId = ?");
             stmt.bind([playerUuid, areaId]);
             stmt.execute();
-            // Check changes if needed
             logDebug(`已移除玩家 ${playerUuid} 在区域 ${areaId} 的特定权限组`);
         } else {
-            // Add or update the permission entry
+            // 添加或更新权限条目
+            // 重要: 'permissions' 表只存储 groupName，不存储创建者 UUID。
+            // 这意味着 getPlayerPermission 无法知道创建者，使得对目标玩家当前组的检查无法实现。
             const stmt = db.prepare(`
                 INSERT OR REPLACE INTO permissions (playerUuid, areaId, groupName)
                 VALUES (?, ?, ?)
             `);
-            stmt.bind([playerUuid, areaId, groupName]);
+            // 存储 targetGroupName (不包含创建者 UUID)
+            stmt.bind([playerUuid, areaId, targetGroupName]);
             stmt.execute();
-            logDebug(`已设置玩家 ${playerUuid} 在区域 ${areaId} 的权限组为: ${groupName}`);
+            logDebug(`已设置玩家 ${playerUuid} 在区域 ${areaId} 的权限组为: ${targetGroupName}`);
         }
-        // stmt.reset(); // Reset if reusing
-
         return true;
 
     } catch(e) {
-         logger.error(`设置玩家 ${playerUuid} 在区域 ${areaId} 权限为 ${groupName} 失败: ${e}`, e.stack);
+         logError(`设置玩家 ${playerUuid} 在区域 ${areaId} 权限为 ${targetGroupName} 失败: ${e}`, e.stack); // 使用 targetGroupName
          return false;
     }
-    /* // Old cache-based logic:
+    /* // 旧的基于缓存的逻辑:
     // const area = areaData[areaId]; // Need areaData passed or loaded if validation is needed
     // if(!area) return false;
 
@@ -869,9 +896,25 @@ function resetCache() {
     lastCacheCleanup = Date.now();
     logInfo("权限缓存已完全重置");
 }
+
+/**
+ * 检查指定的自定义权限组是否包含特定权限。
+ * @param {string} creatorUuid 创建者 UUID
+ * @param {string} groupName 权限组名称 (原始名称)
+ * @param {string} permissionId 要检查的权限 ID
+ * @returns {boolean} 如果组存在且包含该权限，则返回 true，否则返回 false。
+ */
+function groupHasPermission(creatorUuid, groupName, permissionId) {
+    const group = getCustomGroupCached(creatorUuid, groupName);
+    if (group && Array.isArray(group.permissions)) {
+        return group.permissions.includes(permissionId);
+    }
+    return false;
+}
+
 module.exports = {
     checkPermission,
-    setPlayerPermission, 
+    setPlayerPermission,
     getPlayerPermission,
     getAreaDefaultGroup,
     setAreaDefaultGroup,
@@ -882,7 +925,8 @@ module.exports = {
     hasPermissionInCustomGroup,
     groupHasAdminPermissions,
     getAvailableGroups,
-    resetCache
+    resetCache,
+    groupHasPermission // 导出新函数
     // getPlayerAreaGroup and getGroupPermissions moved to api.js
 };
 

@@ -92,6 +92,57 @@ if (apiFuncs && typeof apiFuncs._internal_createAreaFromData === 'function') {
     logError(`[API Exports] Failed to export _internal_createAreaFromData: Function not found or invalid in api.js module.`);
 }
 
+// Export deleteArea (from api.js)
+if (apiFuncs && typeof apiFuncs.deleteArea === 'function') {
+    ll.exports(apiFuncs.deleteArea, API_NAMESPACE, "deleteArea");
+    logInfo(`[API Exports] Exported: ${API_NAMESPACE}.deleteArea`);
+} else {
+    logError(`[API Exports] Failed to export deleteArea: Function not found or invalid in api.js module.`);
+}
+
+// Export getAreasByOwner (from api.js)
+if (apiFuncs && typeof apiFuncs.getAreasByOwner === 'function') {
+    ll.exports(apiFuncs.getAreasByOwner, API_NAMESPACE, "getAreasByOwner");
+    logInfo(`[API Exports] Exported: ${API_NAMESPACE}.getAreasByOwner`);
+} else {
+    logError(`[API Exports] Failed to export getAreasByOwner: Function not found or invalid in api.js module.`);
+}
+
+// Export getAreaAtPosition (from api.js)
+if (apiFuncs && typeof apiFuncs.getAreaAtPosition === 'function') {
+    ll.exports(apiFuncs.getAreaAtPosition, API_NAMESPACE, "getAreaAtPosition");
+    logInfo(`[API Exports] Exported: ${API_NAMESPACE}.getAreaAtPosition`);
+} else {
+    logError(`[API Exports] Failed to export getAreaAtPosition: Function not found or invalid in api.js module.`);
+}
+
+// Export getAllAreaIds (from api.js)
+if (apiFuncs && typeof apiFuncs.getAllAreaIds === 'function') {
+    ll.exports(apiFuncs.getAllAreaIds, API_NAMESPACE, "getAllAreaIds");
+    logInfo(`[API Exports] Exported: ${API_NAMESPACE}.getAllAreaIds`);
+} else {
+    logError(`[API Exports] Failed to export getAllAreaIds: Function not found or invalid in api.js module.`);
+}
+
+// Export checkAreaPermission (wrapper from api.js)
+// Note: The core checkPermission from permission.js is already exported above.
+// Exporting this wrapper provides an alternative access point via the api module itself.
+if (apiFuncs && typeof apiFuncs.checkAreaPermission === 'function') {
+    ll.exports(apiFuncs.checkAreaPermission, API_NAMESPACE, "checkAreaPermission");
+    logInfo(`[API Exports] Exported: ${API_NAMESPACE}.checkAreaPermission (wrapper)`);
+} else {
+    logError(`[API Exports] Failed to export checkAreaPermission: Function not found or invalid in api.js module.`);
+}
+
+// Export getAreasByOwnerUuid (from api.js)
+if (apiFuncs && typeof apiFuncs.getAreasByOwnerUuid === 'function') {
+    ll.exports(apiFuncs.getAreasByOwnerUuid, API_NAMESPACE, "getAreasByOwnerUuid");
+    logInfo(`[API Exports] Exported: ${API_NAMESPACE}.getAreasByOwnerUuid`);
+} else {
+    logError(`[API Exports] Failed to export getAreasByOwnerUuid: Function not found or invalid in api.js module.`);
+}
+
+
 // Example for exporting economy function (uncomment if needed)
 /*
 if (typeof getPlayerBalance === 'function') {

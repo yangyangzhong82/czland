@@ -40,6 +40,7 @@ function initializePlugin() {
         // 这些文件内部会根据 config 决定是否注册监听器
         logInfo("正在加载事件处理器 (基于配置)...");
         require('./eventHandler');
+        require('./customevent');
         // ruleHandler is required inside eventHandler, no need to require here again if that's the case
         // Let's double check eventHandler.js content provided earlier... yes, it requires ruleHandler.
         // require('./ruleHandler'); // ruleHandler 内部也需要 config

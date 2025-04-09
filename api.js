@@ -1,7 +1,7 @@
 // api.js - Defines API functions for external use.
 // API export logic is handled in apiExports.js
 
-const { getPlayerPermissionCached, getCustomGroupCached } = require('./permission'); // Import necessary functions
+const { getPlayerPermissionCached, getCustomGroupCached, groupHasPermission, getAvailableGroups } = require('./permission'); // Import necessary functions
 
 /**
  * 获取玩家在指定区域的权限组名称
@@ -17,14 +17,26 @@ function getPlayerAreaGroup(playerUuid, areaId) {
 /**
  * 获取指定自定义权限组的权限列表
  * @param {string} groupName 权限组名称 (原始名称)
- * @param {string} creatorUuid 创建者 UUID
- * @returns {string[] | null} 权限 ID 数组，如果组不存在则返回 null
+ * @param {string} uniqueGroupId 权限组的唯一标识符 ("组名_创建者UUID")
+ * @returns {string[] | null} 权限 ID 数组，如果组不存在或标识符无效则返回 null
  */
-function getGroupPermissions(groupName, creatorUuid) {
+function getGroupPermissions(uniqueGroupId) {
+    if (typeof uniqueGroupId !== 'string' || !uniqueGroupId.includes('_')) {
+        logError(`[API getGroupPermissions] 无效的 uniqueGroupId: ${uniqueGroupId}`);
+        return null;
+    }
+    const parts = uniqueGroupId.split('_');
+    if (parts.length < 2) {
+        logError(`[API getGroupPermissions] 无法从 uniqueGroupId 解析 groupName 和 creatorUuid: ${uniqueGroupId}`);
+        return null;
+    }
+    const creatorUuid = parts.pop(); // 最后一部分是 UUID
+    const groupName = parts.join('_'); // 前面的部分（可能包含下划线）是组名
+
     // 使用缓存函数获取组详情
     const groupDetails = getCustomGroupCached(creatorUuid, groupName);
     if (groupDetails && Array.isArray(groupDetails.permissions)) {
-        return groupDetails.permissions;
+        return groupDetails.permissions; // 返回权限数组
     }
     // 如果组不存在或权限数据无效，返回 null
     return null;
@@ -591,12 +603,267 @@ function _internal_createAreaFromData(ownerXuid, ownerUuid, areaName, point1, po
     }
 }
 
+/**
+ * 检查指定的自定义权限组是否包含特定权限。
+ * @param {string} groupName 权限组名称 (原始名称)
+ * @param {string} uniqueGroupId 权限组的唯一标识符 ("组名_创建者UUID")
+ * @param {string} permissionId 要检查的权限 ID
+ * @returns {boolean} 如果组存在且包含该权限，则返回 true，否则返回 false。如果标识符无效则返回 false。
+ */
+function checkGroupPermission(uniqueGroupId, permissionId) {
+    if (typeof uniqueGroupId !== 'string' || !uniqueGroupId.includes('_')) {
+        logError(`[API checkGroupPermission] 无效的 uniqueGroupId: ${uniqueGroupId}`);
+        return false;
+    }
+    const parts = uniqueGroupId.split('_');
+     if (parts.length < 2) {
+        logError(`[API checkGroupPermission] 无法从 uniqueGroupId 解析 groupName 和 creatorUuid: ${uniqueGroupId}`);
+        return false;
+    }
+    const creatorUuid = parts.pop(); // 最后一部分是 UUID
+    const groupName = parts.join('_'); // 前面的部分（可能包含下划线）是组名
+
+    // 直接调用 permission.js 中的核心逻辑
+    return groupHasPermission(creatorUuid, groupName, permissionId);
+}
+
+/**
+ * 获取所有可用的自定义权限组的唯一标识符列表。
+ * @returns {string[]} 格式: ["组名1_创建者UUID1", "组名2_创建者UUID2", ...]
+ */
+function getAvailablePermissionGroups() {
+    // 直接调用 permission.js 中的核心逻辑，它现在返回 ID 数组
+    return getAvailableGroups();
+}
+
 
 module.exports = {
     getPlayerAreaGroup,
     getGroupPermissions,
+    getAvailablePermissionGroups, // 导出新的 API 函数
+    checkGroupPermission, // 导出新的 API 函数
     _internal_createAreaFromData, // Export new internal function
     createArea, // Export new function
     modifyArea,  // Export new function
-    getAreaInfo // Export new function
+    getAreaInfo, // Export new function
+    deleteArea, // Export new function
+    getAreasByOwner, // Export new function
+    getAreaAtPosition, // Export new function
+    getAllAreaIds, // Export new function
+    checkAreaPermission, // Export new wrapper function
+    getAreasByOwnerUuid // Export new function for UUID query
 };
+
+// --- New API Functions ---
+
+/**
+ * 删除一个区域。
+ * @param {Player | string} deleter - 执行删除操作的玩家对象或其 UUID。
+ * @param {string} areaId - 要删除的区域的 ID。
+ * @param {boolean} [force=false] - 是否强制删除 (例如，忽略子区域检查，需要特殊权限)。
+ * @returns {Promise<{success: boolean, refundedAmount?: number, error?: string}>} - 操作结果。
+ */
+async function deleteArea(deleter, areaId, force = false) {
+    // Moved require here to avoid circular dependency
+    const { getAreaData, updateAreaData } = require('./czareaprotection');
+    const { checkPermission } = require('./permission'); // Import permission check
+    const { handleAreaRefund } = require('./economy'); // Import economy functions
+    const { saveAreaData } = require('./config'); // Import save function
+    const { loadConfig } = require('./configManager'); // Import config loader
+    const { logInfo, logWarning, logError } = require('./logger'); // Import logger
+    const { isAreaAdmin } = require('./areaAdmin'); // Import admin check
+
+    const config = loadConfig();
+    const areaData = getAreaData();
+    const area = areaData[areaId];
+
+    if (!area) {
+        return { success: false, error: "区域不存在" };
+    }
+
+    // --- 权限检查 ---
+    let deleterPlayer = null;
+    let deleterUuid = null;
+    if (typeof deleter === 'object' && deleter && deleter.uuid) {
+        deleterPlayer = deleter;
+        deleterUuid = deleter.uuid;
+    } else if (typeof deleter === 'string') {
+        deleterUuid = deleter; // Assume it's UUID
+    } else {
+        return { success: false, error: "无效的删除者信息 (需要 Player 对象或 UUID)" };
+    }
+
+    // checkPermission needs player object or UUID, areaData, areaId, permissionId
+    const hasPermission = checkPermission(deleterPlayer || deleterUuid, areaData, areaId, "delete");
+    if (!hasPermission) {
+        return { success: false, error: "无权限删除此区域" };
+    }
+
+    logInfo(`[API] ${deleterPlayer ? deleterPlayer.name : `用户(${deleterUuid})`} 尝试删除区域 ${areaId}`);
+
+    // --- 子区域检查 ---
+    if (!area.isSubarea && area.subareas && Object.keys(area.subareas).length > 0 && !force) {
+        return { success: false, error: "无法删除：该区域包含子区域。请先删除子区域或使用强制删除选项。" };
+    }
+    // 强制删除需要管理员权限
+    if (force && !isAreaAdmin(deleterUuid)) {
+         return { success: false, error: "无权限强制删除包含子区域的区域" };
+    }
+
+    // --- 经济退款 (仅主区域) ---
+    let refundedAmount = 0;
+    if (!area.isSubarea && config.economy.enabled && config.economy.refundOnDelete) {
+        // handleAreaRefund uses the 'player' parameter mainly for sending messages back to the deleter.
+        // The actual refund target (owner) is determined from the 'area' object's xuid/uuid inside handleAreaRefund.
+        // We can still attempt the refund even if we only have the deleter's UUID.
+        // If deleterPlayer is null, handleAreaRefund might not send a confirmation message, but the refund should proceed.
+        try {
+            // Pass the deleterPlayer object if available (for messages), otherwise pass null or a placeholder if needed.
+            // handleAreaRefund itself should handle the case where the first argument isn't a full Player object gracefully for messaging.
+            // Let's assume handleAreaRefund can accept null or just needs the area object for the core refund logic.
+            // We'll pass deleterPlayer (which might be null) and the area.
+            refundedAmount = await handleAreaRefund(deleterPlayer, area); // Pass deleterPlayer (can be null) and the area object
+            // Log the refund attempt result regardless of whether deleterPlayer was present
+            logInfo(`[API] 区域 ${areaId} 删除，尝试退款 ${refundedAmount} (基于区域主人信息)`);
+        } catch (refundError) {
+            logError(`[API] 区域 ${areaId} 删除时调用退款处理失败: ${refundError.message}`);
+            // Decide whether to proceed with deletion despite refund failure. Currently proceeding.
+        }
+    }
+
+    // --- 执行删除 ---
+    const currentAreaData = { ...areaData }; // 创建副本
+
+    // 如果是子区域，从父区域的 subareas 中移除
+    if (area.isSubarea && area.parentAreaId && currentAreaData[area.parentAreaId]) {
+        const parentArea = currentAreaData[area.parentAreaId];
+        if (parentArea.subareas && parentArea.subareas[areaId]) {
+            delete parentArea.subareas[areaId];
+            logDebug(`[API] 从父区域 ${area.parentAreaId} 的 subareas 中移除 ${areaId}`);
+        }
+    }
+
+    // 如果是强制删除且有子区域，递归或迭代删除子区域 (简单实现：仅记录警告)
+    if (force && !area.isSubarea && area.subareas && Object.keys(area.subareas).length > 0) {
+        logWarning(`[API] 强制删除区域 ${areaId}，其子区域 (${Object.keys(area.subareas).join(', ')}) 将成为孤立区域，除非手动处理。`);
+        // 更完善的实现会递归调用 deleteArea 或直接删除子区域数据
+        // for (const subId in area.subareas) {
+        //     if (currentAreaData[subId]) {
+        //         delete currentAreaData[subId]; // 直接删除子区域数据
+        //         logInfo(`[API] 强制删除，子区域 ${subId} 已被移除。`);
+        //     }
+        // }
+    }
+
+    // 从主数据中删除该区域
+    delete currentAreaData[areaId];
+
+    // --- 保存与更新 ---
+    if (saveAreaData(currentAreaData)) {
+        logInfo(`[API] 区域 ${areaId} 已成功删除`);
+        updateAreaData(currentAreaData); // 更新内存数据和空间索引
+        return { success: true, refundedAmount: refundedAmount };
+    } else {
+        logError(`[API] 删除区域 ${areaId} 后保存区域数据失败`);
+        // 尝试回滚？非常困难。
+        return { success: false, error: "区域删除成功但保存失败，请检查日志" };
+    }
+}
+
+/**
+ * 获取指定玩家拥有的所有区域 ID 列表。
+ * @param {string} playerXuid - 玩家的 XUID。
+ * @returns {string[]} - 区域 ID 数组。
+ */
+function getAreasByOwner(playerXuid) {
+    const { getAreaData } = require('./czareaprotection');
+    const areaData = getAreaData();
+    const ownedAreas = [];
+
+    for (const areaId in areaData) {
+        const area = areaData[areaId];
+        if (area.xuid === playerXuid) {
+            ownedAreas.push(areaId); // 只添加区域 ID
+        }
+    }
+    return ownedAreas;
+}
+
+/**
+ * 获取指定坐标点处优先级最高的区域信息。
+ * @param {object} position - 坐标对象 {x, y, z, dimid}。
+ * @returns {object | null} - 最高优先级的区域数据对象，如果不在任何区域则返回 null。
+ */
+function getAreaAtPosition(position) {
+    const { getAreaData, getSpatialIndex } = require('./czareaprotection');
+    const { getPriorityAreasAtPosition } = require('./utils'); // 导入核心逻辑函数
+
+    if (!position || position.x === undefined || position.y === undefined || position.z === undefined || position.dimid === undefined) {
+        logError("[API getAreaAtPosition] 无效的位置对象");
+        return null;
+    }
+
+    const areaData = getAreaData();
+    const spatialIndex = getSpatialIndex();
+
+    const areasAtPos = getPriorityAreasAtPosition(position, areaData, spatialIndex);
+
+    if (areasAtPos.length > 0) {
+        // getPriorityAreasAtPosition 返回的是排序后的 {id, area, depth, parentAreaId} 结构
+        // 返回最优先的区域的完整数据 (深拷贝)
+        return JSON.parse(JSON.stringify(areasAtPos[0].area));
+    } else {
+        return null; // 不在任何区域
+    }
+}
+
+/**
+ * 获取所有区域的 ID 列表。
+ * @returns {string[]} - 包含所有区域 ID 的数组。
+ */
+function getAllAreaIds() {
+    const { getAreaData } = require('./czareaprotection');
+    const areaData = getAreaData();
+    return Object.keys(areaData);
+}
+
+/**
+ * 检查玩家在指定区域是否拥有特定权限 (API 包装器)。
+ * @param {Player | string} player - 玩家对象或其 UUID。
+ * @param {string} areaId - 要检查的区域 ID。
+ * @param {string} permissionId - 要检查的权限 ID。
+ * @returns {boolean} - 是否拥有权限。
+ */
+function checkAreaPermission(player, areaId, permissionId) {
+    const { getAreaData } = require('./czareaprotection');
+    const { checkPermission } = require('./permission'); // 导入核心权限检查函数
+    const areaData = getAreaData();
+
+    // 直接调用核心检查函数
+    return checkPermission(player, areaData, areaId, permissionId);
+}
+
+/**
+ * 获取指定玩家 UUID 拥有的所有区域 ID 列表。
+ * @param {string} playerUuid - 玩家的 UUID。
+ * @returns {string[]} - 区域 ID 数组。
+ */
+function getAreasByOwnerUuid(playerUuid) {
+    const { getAreaData } = require('./czareaprotection');
+    const areaData = getAreaData();
+    const ownedAreas = [];
+
+    if (!playerUuid || typeof playerUuid !== 'string') {
+        logError("[API getAreasByOwnerUuid] 无效的 playerUuid");
+        return [];
+    }
+
+    for (const areaId in areaData) {
+        const area = areaData[areaId];
+        // Check if the area has a uuid property and if it matches
+        if (area.uuid && area.uuid === playerUuid) {
+            ownedAreas.push(areaId); // 只添加区域 ID
+        }
+    }
+    return ownedAreas;
+}
