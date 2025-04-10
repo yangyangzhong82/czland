@@ -210,7 +210,7 @@ function showAreaListForm(player, currentPage = 0, filter = "", dimFilters = [],
     }
     const completeSwitchIndex = areaStartIndex + pageAreas.length;
     const pageSliderIndex = completeSwitchIndex + 1;
-    const backSwitchIndex = pageSliderIndex + 1; // 新增返回开关的索引
+    const backSwitchIndex = pageSliderIndex + 1; // 返回开关的索引
 
     // 完成选择开关
     fm.addSwitch("完成选择", false); // index completeSwitchIndex

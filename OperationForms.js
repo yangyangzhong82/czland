@@ -114,7 +114,7 @@ function confirmResizeArea(player, areaId, origin) {
         return;
     }
 
-    // --- 新增：检查总区域大小限制 (仅对主区域生效) ---
+    // 检查总区域大小限制 (仅对主区域生效) ---
     if (!area.isSubarea && !isAreaAdmin(player.uuid) && config.maxTotalAreaSizePerPlayer > 0) {
         // 1. 计算玩家当前拥有的 *其他* 主区域的总大小
         let currentTotalSizeExcludingThis = 0;

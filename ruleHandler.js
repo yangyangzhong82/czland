@@ -127,7 +127,7 @@ if (config.ruleListenerControl.fireTryBurnBlock) {
 
                 logDebug("允许火焰烧毁方块");
             },
-            iListenAttentively.EventPriority.High
+            iListenAttentively.EventPriority.Normal
         );
     } catch (e) {
         logError(`Failed to register ila::mc::world::FireTryBurnBlockBeforeEvent listener: ${e.message}`);
@@ -167,7 +167,7 @@ if (config.ruleListenerControl.mossGrowth) {
 
                 logDebug("允许苔藓生长");
             },
-            iListenAttentively.EventPriority.High
+            iListenAttentively.EventPriority.Normal
         );
     } catch (e) {
         logError(`Failed to register ila::mc::world::level::block::MossGrowthBeforeEvent listener: ${e.message}`);
@@ -207,7 +207,7 @@ if (config.ruleListenerControl.sculkSpread) {
 
                 // logDebug("允许幽匿催发体生成");
             },
-            iListenAttentively.EventPriority.High
+            iListenAttentively.EventPriority.Normal
         );
     } catch (e) {
         logError(`Failed to register ila::mc::world::level::block::SculkSpreadBeforeEvent listener: ${e.message}`);
@@ -337,7 +337,7 @@ if (config.ruleListenerControl.dragonEggTeleport) {
 
                 logDebug("允许龙蛋传送");
             },
-            iListenAttentively.EventPriority.High
+            iListenAttentively.EventPriority.Normal
         );
     } catch (e) {
         logError(`Failed to register ila::mc::world::level::block::DragonEggBlockTeleportBeforeEvent listener: ${e.message}`);
@@ -373,7 +373,7 @@ if (config.ruleListenerControl.fireworkDamage) {
                 // 不在区域内或区域允许
                 logDebug(`允许烟花伤害 at (${pos.x}, ${pos.y}, ${pos.z})`);
             },
-            iListenAttentively.EventPriority.High
+            iListenAttentively.EventPriority.Normal
         );
     } catch (e) {
         logError(`Failed to register ila::mc::world::actor::FireworkRocketDealDamageBeforeEvent listener: ${e.message}`);
@@ -410,12 +410,12 @@ if (config.ruleListenerControl.mobGriefing) {
                     const areaId = areaInfo.id;
                     if (area.rules?.allowMobGriefing === false) { // Explicitly check for false
                         //logDebug(`区域 ${areaId} (${area.name}) 不允许生物破坏方块，已拦截 ${Entity.type} 的行为`);
-                        event["cancelled"] = true; // 拦截破坏
+                        //event["cancelled"] = true; // 拦截破坏
                         return;
                     }
                 }
             },
-            iListenAttentively.EventPriority.High
+            iListenAttentively.EventPriority.Normal
         );
     } catch (e) {
         logError(`Failed to register ila::mc::world::actor::ActorDestroyBlockEvent listener: ${e.message}`);
@@ -476,7 +476,7 @@ if (config.ruleListenerControl.liquidFlow) {
 
                 // 默认允许流动
             },
-            iListenAttentively.EventPriority.High
+            iListenAttentively.EventPriority.Normal
         );
     } catch (e) {
         logError(`Failed to register ila::mc::world::level::block::LiquidFlowBeforeEvent listener: ${e.message}`);

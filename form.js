@@ -9,7 +9,6 @@ function showCreateAreaForm(pl, point1, point2, areaData, playerData, saveAreaDa
     const form = mc.newCustomForm();
     form.setTitle("创建区域");
 
-    // --- 新增代码 开始 ---
     const config = loadConfig(); // 加载配置
     const economyConfig = config.economy;
 
@@ -35,7 +34,7 @@ function showCreateAreaForm(pl, point1, point2, areaData, playerData, saveAreaDa
     form.addLabel(`§f区域大小: ${length}(长) x ${width}(宽) x ${height}(高) = ${volume}(体积)`);
     form.addLabel(`§f所在维度: ${dimensionName} (价格倍率: x${dimMultiplier})`);
 
-    // --- 新增：显示当前总大小和限制 ---
+    // 显示当前总大小和限制 ---
     const currentTotalSize = calculatePlayerTotalAreaSize(pl.xuid, areaData);
     let sizeLimitText = "";
     if (config.maxTotalAreaSizePerPlayer > 0) {
@@ -134,7 +133,7 @@ function showCreateAreaForm(pl, point1, point2, areaData, playerData, saveAreaDa
             return;
         }
 
-        // --- 新增：检查总区域大小限制 ---
+        // 检查总区域大小限制 ---
         if (!isAreaAdmin(player.uuid) && config.maxTotalAreaSizePerPlayer > 0) {
             const currentTotalSize = calculatePlayerTotalAreaSize(player.xuid, areaData);
             const newAreaVolume = calculateAreaVolume({ point1, point2 }); // 计算新区域体积

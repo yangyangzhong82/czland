@@ -176,7 +176,7 @@ function handleAddAdmin(ori, out, playerName, areaData) {
     }
 }
 
-// 新增：处理删除领地管理员的函数
+// 处理删除领地管理员
 function handleRemoveAdmin(ori, out, playerName) {
     if (!playerName) {
         return out.error("§c请指定玩家名称！");
@@ -225,7 +225,7 @@ function handleRemoveAdmin(ori, out, playerName) {
     }
 }
 
-// 新增：处理列出所有领地管理员的函数
+// 处理列出所有领地管理员
 function handleListAdmins(ori, out) {
     const { getAllAreaAdmins } = require('./areaAdmin');
     const admins = getAllAreaAdmins();

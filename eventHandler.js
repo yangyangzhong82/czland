@@ -296,7 +296,7 @@ if (config.listenerControl.onDropItem) {
                     event["cancelled"] = true; // 拦截
                 }
             },
-            iListenAttentively.EventPriority.High
+            iListenAttentively.EventPriority.Normal
         );
     } catch (e) {
         logError(`Failed to register ila::mc::world::actor::player::PlayerDropItemAfterEvent listener: ${e.message}`);
@@ -626,7 +626,7 @@ if (config.listenerControl.onEditSign) { // 需要 ila
                     // 权限足够，不需要设置 event["cancelled"] = false，默认不拦截
                 }
             },
-            iListenAttentively.EventPriority.High // 保持高优先级以确保先执行权限检查
+            iListenAttentively.EventPriority.Normal
         );
     } catch (e) {
         logError(`Failed to register ila::mc::world::actor::player::PlayerEditSignBeforeEvent listener: ${e.message}`);
@@ -681,7 +681,7 @@ if (config.listenerControl.mobHurtEffect) { // 用户请求 (ila)
                     // 权限足够，不需要设置 event["cancelled"] = false，默认不拦截
                 }
             },
-            iListenAttentively.EventPriority.Highest // 使用最高优先级确保在其他效果前检查
+            iListenAttentively.EventPriority.Normal
         );
     } catch (e) {
         logError(`Failed to register ila::mc::world::actor::MobHurtEffectBeforeEvent listener: ${e.message}`);

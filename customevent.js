@@ -37,7 +37,7 @@ mc.listen("onServerStarted", () => {
                  
         
         },
-        iListenAttentively.EventPriority.High
+        iListenAttentively.EventPriority.Normal
     );
     iListenAttentively.emplaceListener(
         "czareaprotection::playerLeaveArea",
@@ -46,7 +46,7 @@ mc.listen("onServerStarted", () => {
                  
         
         },
-        iListenAttentively.EventPriority.High
+        iListenAttentively.EventPriority.Normal
     );
     
     // 在控制台输出所有事件信息

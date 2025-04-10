@@ -299,7 +299,7 @@ const DEFAULT_CONFIG = {
     forms: {
         itemsPerPage: 30 // 表单每页显示的项目数量
     },
-    // 新增：事件监听器控制
+    // 事件监听器控制
     listenerControl: {
         // 核心方块交互
         onDestroyBlock: true,
@@ -335,7 +335,7 @@ const DEFAULT_CONFIG = {
         onMobTrySpawn: true, // 用户请求 (同时在 ruleHandler 中使用此配置)
         playerMovementCheck: true, // 控制 handlePlayerMovement 的 setInterval (检查 enter_area 权限)
     },
-    // 新增：规则事件监听器控制
+    // 规则事件监听器控制
     ruleListenerControl: {
         onEntityExplode: true,
         onBlockExplode: true,

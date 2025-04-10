@@ -86,7 +86,7 @@ function getPriorityAreasAtPosition(pos, areaData, spatialIndex) {
                 area: area,
                 isSubarea: !!area.isSubarea,
                 parentAreaId: area.parentAreaId,
-                depth: depth // 添加深度信息
+                depth: depth 
             });
         }
     }
@@ -107,7 +107,7 @@ function getPriorityAreasAtPosition(pos, areaData, spatialIndex) {
 }
 
 
-// 获取位置优先级最高的区域 (需要传递 spatialIndex)
+// 获取位置优先级最高的区域
 function getHighestPriorityArea(pos, areaData, spatialIndex) {
     const areas = getPriorityAreasAtPosition(pos, areaData, spatialIndex); // 传递 spatialIndex
     return areas.length > 0 ? areas[0] : null;
@@ -358,12 +358,12 @@ module.exports = {
     checkAreasOverlap,
     checkNewAreaOverlap,
     isAreaWithinArea,
-    getPriorityAreasAtPosition, // 导出新函数
+    getPriorityAreasAtPosition, 
     getHighestPriorityArea,
     checkAreaSizeLimits,
     countPlayerAreas,
-    calculateAreaVolume, // 导出计算体积函数
-    calculatePlayerTotalAreaSize, // 导出计算总大小函数
+    calculateAreaVolume,
+    calculatePlayerTotalAreaSize, 
     matchesIdPattern,
     findNearestBoundaryPoint
 };
