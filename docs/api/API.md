@@ -40,7 +40,7 @@ if (currentArea && player) {
 
 -   **描述**: 获取当前加载的所有区域的数据。
 -   **参数**: 无。
--   **返回**: `Object` - 一个以区域 ID 为键，区域数据对象为值的对象。请注意，直接修改此对象可能导致意外行为，建议将其视为只读。如果需要修改，请使用 `createArea`, `modifyArea`, `deleteArea` 等 API。
+-   **返回**: `Object` - 一个以区域 ID 为键，区域数据对象为值的对象。请注意，直接修改此对象可能导致意外行为，建议将其视为只读。如果需要修改，请使用`modifyArea`API。
     ```json
     // 返回示例结构
     {
@@ -52,13 +52,7 @@ if (currentArea && player) {
         "xuid": "1234567890",
         "uuid": "player-uuid-string",
         "createTime": 1678886400000,
-        "price": 10000,
-        "isSubarea": false,
-        "parentAreaId": null,
-        "priority": 0,
-        "rules": {"pvp": false},
-        "subareas": {"sub_area_456": true},
-        "teleportPoint": {"x": 50, "y": 61, "z": 50, "dimid": 0, "yaw": 0, "pitch": 0}
+        "price": 10000
       },
       "sub_area_456": { ... } // 子区域数据
       // ... 其他区域

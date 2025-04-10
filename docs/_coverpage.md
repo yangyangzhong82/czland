@@ -8,5 +8,5 @@
 -   子区域支持
 -   可视化操作
 
-[GitHub](https://github.com/your-username/CzAreaProtection) <!-- 替换为实际仓库链接 -->
+[GitHub](https://github.com/yangyangzhong82/czland) <!-- 替换为实际仓库链接 -->
 [开始使用](#czareaprotection-区域保护插件)
