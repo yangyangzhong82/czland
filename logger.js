@@ -11,7 +11,7 @@ function initLogger(config) {
 function logDebug(message) {
     // 只检查模块级别的标志
     if (isDebugEnabled) {
-        logger.info(` [DEBUG] ${message}`); // 使用 logger.info 打印调试信息，或根据需要调整级别
+        logger.info(` [DEBUG] ${message}`); 
     }
 }
 

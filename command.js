@@ -61,7 +61,7 @@ function registerCommands(areaData, showCreateAreaForm, saveAreaData) {
 function registerAdminCommand(areaData) {
     const adminCmd = mc.newCommand("areaadmin", "区域管理员控制命令", PermType.Console);
     adminCmd.setAlias("landop");
-    adminCmd.setEnum("AdminActions", ["op", "deop", "admins"]);
+    adminCmd.setEnum("AdminActions", ["op", "deop", "list"]);
     
     adminCmd.mandatory("adminAction", ParamType.Enum, "AdminActions", 1);
     adminCmd.optional("playerName", ParamType.String);

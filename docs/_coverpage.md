@@ -1,6 +1,12 @@
-# PLand
+<!-- docs/_coverpage.md -->
 
-- 基于 C++ 开发的领地插件
+# CzAreaProtection <small>v1.0.0</small> <!-- 替换为实际版本号 -->
 
-[GitHub](https://github.com/engsr6982/PLand)
-[Get Started](/README.md)
+> 功能强大的 LeviLamina 区域保护插件
+
+-   灵活的权限管理
+-   子区域支持
+-   可视化操作
+
+[GitHub](https://github.com/your-username/CzAreaProtection) <!-- 替换为实际仓库链接 -->
+[开始使用](#czareaprotection-区域保护插件)

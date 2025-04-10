@@ -1,4 +1,13 @@
-- [主页](./README.md)
-- **用户文档**
-- [配置](config/config.md)
-
+-   入门
+    -   [简介](README.md)
+    -   [安装指南](use/Install.md)
+-   使用指南
+    -   [主要功能](use/Features.md)
+    -   [命令列表](use/Commands.md)
+-   配置
+    -   [配置文件 (config.json)](config/config.md)
+    -   [权限系统](config/permissions.md)
+-   开发者 API
+    -   [插件 API](api/API.md)
+-   [更新日志](CHANGELOG.md) <!-- 假设未来会添加更新日志 -->
+-   [GitHub 仓库](https://github.com/your-username/CzAreaProtection) <!-- 替换为实际仓库链接 -->

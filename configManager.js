@@ -39,7 +39,7 @@ const DEFAULT_CONFIG = {
         }
     },
     teleport: {
-        enabled: true, // 是否启用区域传送功能
+        enabled: false, // 是否启用区域传送功能
         costPerTeleport: 10, // 每次传送的固定费用
         teleportCooldown: 5, // 玩家每次传送的冷却时间（秒），0 或负数表示无冷却
         preventTeleportIfInside: true, // 是否阻止玩家传送到他们当前所在的区域
@@ -244,22 +244,18 @@ const DEFAULT_CONFIG = {
             "minecraft:boat", "minecraft:chest_boat"
         ]
     },
-    debug: true,
+    debug: false,
     toolSelector: {
-        enabled: false,
+        enabled: true,
         tool: "minecraft:stick",  // Default tool is a stick, null would disable
 
     },
     displayAreaInfo: true,
     areaInfoDisplayDuration: 5,
-    maxAreasPerPlayer: 5,
+    maxAreasPerPlayer: 50,
     maxTotalAreaSizePerPlayer: -1, // 玩家可拥有的区域总大小限制 (-1 为不限制)
     defaultGroupPermissions: [
-        "break",
-        "place",
-        "pickupItems",
-        "dropItems",
-        "openContainer"
+        "enterArea"
     ],
     economy: {
         enabled: true, // 是否启用经济系统
@@ -276,7 +272,7 @@ const DEFAULT_CONFIG = {
         maxPrice: 1000000, // 最高价格
         refundRate: 0.7, // 退款率(0-1之间)
         priceFormula: {
-            useCustom: false, // 是否使用自定义公式
+            useCustom: true, // 是否使用自定义公式
             formula: "length * width * height * pricePerBlock" // 自定义价格计算公式
         }
     },
@@ -301,7 +297,7 @@ const DEFAULT_CONFIG = {
         }
     },
     forms: {
-        itemsPerPage: 5 // 表单每页显示的项目数量
+        itemsPerPage: 30 // 表单每页显示的项目数量
     },
     // 新增：事件监听器控制
     listenerControl: {
@@ -309,7 +305,7 @@ const DEFAULT_CONFIG = {
         onDestroyBlock: true,
         onPlaceBlock: true,
         onAttackBlock: true,
-        onBlockInteracted: true, // 用户请求
+        onBlockInteracted: true, // 
 
         // 容器/物品栏交互
         onOpenContainer: true,
@@ -319,8 +315,8 @@ const DEFAULT_CONFIG = {
         // 实体交互
         onAttackEntity: true,
         onMobHurt: true, // 涵盖玩家来源伤害
-        mobHurtEffect: true, // 用户请求 (魔法/药水效果的 ila 监听器)
-        onPlayerInteractEntity: true, // 用户请求
+        mobHurtEffect: true, //  (魔法/药水效果的 ila 监听器)
+        onPlayerInteractEntity: true, // 
         onRide: true,
         onChangeArmorStand: true,
         onUseFrameBlock: true,
@@ -348,7 +344,6 @@ const DEFAULT_CONFIG = {
         mossGrowth: true, // ila
         sculkSpread: true, // ila
         onWitherBossDestroy: true,
-        // onMobTrySpawn 由 listenerControl.onMobTrySpawn 控制
         dragonEggTeleport: true, // ila
         fireworkDamage: true, // ila
         mobGriefing: true, // ila (ActorDestroyBlockEvent)
