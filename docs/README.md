@@ -1,4 +1,4 @@
-# PLand
+# czareaprotection
 
 基于 LeviLamina 开发、适用于 BDS 的领地系统插件 czareaprotection(czland)。
 
