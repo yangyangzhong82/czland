@@ -741,9 +741,6 @@ function handlePlayerMovement(player) {
                     playerUuid: playerUUID,
                     areaId: prevPriorityAreaId
                 };
-                const nbtData = new NbtCompound({
-                    data: new NbtString(JSON.stringify(leaveEventData))
-                });
                 iListenAttentively.publish("czareaprotection::playerLeaveArea", leaveEventData); // Corrected event name
                 logDebug(`Published czareaprotection::playerLeaveArea for player ${player.name}, area ${prevPriorityAreaId}`);
             } catch (e) {
@@ -796,9 +793,6 @@ function handlePlayerMovement(player) {
                         playerUuid: playerUUID,
                         areaId: currentPriorityAreaId
                     };
-                    const nbtData = new NbtCompound({
-                    data: new NbtString(JSON.stringify(enterEventData))
-                });
                 iListenAttentively.publish("czareaprotection::playerEnterArea", enterEventData); // Corrected event name
                 logDebug(`Published czareaprotection::playerEnterArea for player ${player.name}, area ${currentPriorityAreaId}`);
             } catch (e) {
