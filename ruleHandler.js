@@ -483,5 +483,3 @@ if (config.ruleListenerControl.liquidFlow) {
     }
 }
 
-// 导出模块（如果需要的话，但通常规则处理器不需要导出）
-// module.exports = { ... };

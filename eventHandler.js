@@ -10,6 +10,8 @@ const { logDebug, logInfo, logWarning, logError } = require('./logger');
 require('./ruleHandler'); // 引入规则处理器
 const playerPositionHistory = {};
 
+
+
 /**
  * 检查玩家在指定位置是否有特定权限，使用空间索引优化
  * @param {Player} player - 玩家对象
@@ -686,7 +688,7 @@ if (config.listenerControl.mobHurtEffect) { // 用户请求 (ila)
     }
 }
 /**
- * 跟踪玩家位置并处理区域进入权限
+ * 跟踪玩家位置并处理区域进入/离开事件和权限
  * @param {Player} player - 要检查的玩家
  */
 function handlePlayerMovement(player) {
@@ -732,6 +734,23 @@ function handlePlayerMovement(player) {
     if (currentPriorityAreaId !== prevPriorityAreaId) {
         // 最高优先级区域已改变 (进入新区域或离开区域)
 
+        // --- 推送离开事件 (如果之前在区域内) ---
+        if (prevPriorityAreaId) {
+            try {
+                const leaveEventData = {
+                    playerUuid: playerUUID,
+                    areaId: prevPriorityAreaId
+                };
+                const nbtData = new NbtCompound({
+                    data: new NbtString(JSON.stringify(leaveEventData))
+                });
+                iListenAttentively.publish("czareaprotection::playerLeaveArea", leaveEventData); // Corrected event name
+                logDebug(`Published czareaprotection::playerLeaveArea for player ${player.name}, area ${prevPriorityAreaId}`);
+            } catch (e) {
+                logError(`Error publishing "czareaprotection::playerLeaveArea": ${e.message}`); // Corrected log message
+            }
+        }
+
         if (currentPriorityArea) {
             // 进入了一个新的最高优先级区域
             //logDebug(`玩家 ${player.name} 尝试进入新的最高优先级区域 ${currentPriorityArea.area.name} (ID: ${currentPriorityAreaId})，先前区域ID: ${prevPriorityAreaId}`);
@@ -749,7 +768,7 @@ function handlePlayerMovement(player) {
                     if (!success) {
                         logWarning(`传送玩家 ${player.name} 到安全位置失败！`);
                     }
-
+                    // 权限不足，不更新历史，不推送进入事件
                     return;
                 } else {
                     logWarning(`玩家 ${player.name} 没有进入区域 ${currentPriorityArea.area.name} 的权限，但找不到安全传送位置！`);
@@ -766,16 +785,31 @@ function handlePlayerMovement(player) {
                     } else {
                         logError(`无法计算玩家 ${player.name} 到区域 ${currentPriorityArea.area.name} 的边界传送点！玩家可能被卡住。`);
                     }
+                     // 权限不足，不更新历史，不推送进入事件
                     return; // 无论传送是否成功，都阻止进入并返回
                 }
             } else {
                 //logDebug(`玩家 ${player.name} 权限检查通过，允许进入区域 ${currentPriorityArea.area.name}`);
+                // --- 推送进入事件 ---
+                try {
+                    const enterEventData = {
+                        playerUuid: playerUUID,
+                        areaId: currentPriorityAreaId
+                    };
+                    const nbtData = new NbtCompound({
+                    data: new NbtString(JSON.stringify(enterEventData))
+                });
+                iListenAttentively.publish("czareaprotection::playerEnterArea", enterEventData); // Corrected event name
+                logDebug(`Published czareaprotection::playerEnterArea for player ${player.name}, area ${currentPriorityAreaId}`);
+            } catch (e) {
+                logError(`Error publishing czareaprotection::playerEnterArea: ${e.message}`); // Corrected log message
+                }
                 // 权限允许，继续执行下面的历史更新
             }
         } else {
             // 离开了所有区域 (currentPriorityAreaId is null, prevPriorityAreaId was not)
             //logDebug(`玩家 ${player.name} 已离开区域 ${prevPriorityArea.area.name} (ID: ${prevPriorityAreaId}) 进入野外`);
-            // 无需权限检查，继续执行下面的历史更新
+            // 离开事件已在上面推送，继续执行下面的历史更新
         }
     } else {
          // logDebug(`玩家 ${player.name} 仍在同一最高优先级区域 ${currentPriorityAreaId ? currentPriorityArea.area.name : '野外'}`);
@@ -847,6 +881,8 @@ if (config.listenerControl.playerMovementCheck) {
     }, 500); // 比区域显示更频繁地检查，例如每500毫秒
 }
 
+
+
 // 新增：监听方块交互事件，补充 onUseItemOn 的检查
 if (config.listenerControl.onBlockInteracted) { // 用户请求
     mc.listen("onBlockInteracted", (player, block) => {
@@ -916,6 +952,8 @@ if (config.listenerControl.onBlockInteracted) { // 用户请求
         }
     });
 }
+
+
 
 // 导出模块（如果需要的话，但通常事件处理器不需要导出）
 // module.exports = { ... };

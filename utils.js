@@ -420,7 +420,7 @@ function findNearestBoundaryPoint(pos, area) {
     targetZ = Math.max(minZ, Math.min(targetZ, maxZ));
     // Y 坐标需要小心处理，避免卡墙或掉虚空。
     // 暂时保持玩家 Y 坐标，或者设置为 minY + 1?
-    // 保持玩家 Y 坐标可能更安全，除非 Y 是最近的面。
+    // 保持玩家 Y 坐标可能更安全？除非 Y 是最近的面。
     // targetY = Math.max(minY, Math.min(targetY, maxY)); // 限制 Y
 
     switch (nearestFace) {

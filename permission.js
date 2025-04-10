@@ -14,10 +14,9 @@ let systemDefaultPermissionsCache = null; // 系统默认权限缓存
 let playerNameCache = {}; // 玩家名称缓存 {uuid: name}
 const CACHE_TTL = 5 * 60 * 1000; // 缓存有效期(5分钟)
 let lastCacheCleanup = Date.now();
-// 加载权限数据
-// let permissionData = loadPermissionData(); // 移除，因为现在直接从数据库读取
 
-// 移除 getDefaultGroupConfig 函数
+
+
 
 // 修改：接受 group 对象，而不是 groupId 和 groupsData
 function groupHasAdminPermissions(group) {
@@ -40,33 +39,7 @@ function groupHasAdminPermissions(group) {
     return false; // No admin permission found in the group
 }
 
-// 获取玩家名称（带缓存）
-function getPlayerNameCached(uuid) {
-    if (!playerNameCache[uuid]) {
-        logDebug(`[getPlayerNameCached] 缓存未命中，尝试获取 UUID: ${uuid} 的名称`);
-            const playerDataResult = getOfflinePlayerData(uuid); // 重命名以示区分
-            logDebug(`[getPlayerNameCached] getOfflinePlayerData(${uuid}) 返回: ${playerDataResult ? JSON.stringify(playerDataResult) : 'null'}`);
 
-            // 更健壮地处理返回结果
-            let foundName = null;
-            if (Array.isArray(playerDataResult) && playerDataResult.length > 0 && playerDataResult[0] && typeof playerDataResult[0].name === 'string') {
-                // 标准情况：返回数组 [{name: ..., ...}]
-                playerNameCache[uuid] = playerDataResult[0].name; // 从数组的第一个元素获取名称
-                logDebug(`[getPlayerNameCached] 成功从结果中提取名称: ${playerNameCache[uuid]}`);
-            } else if (typeof playerDataResult === 'object' && playerDataResult !== null && typeof playerDataResult.name === 'string') {
-                 // 备用情况：直接返回对象 {name: ..., ...}
-                 playerNameCache[uuid] = playerDataResult.name;
-                 logDebug(`[getPlayerNameCached] 成功从直接返回的对象中提取名称: ${playerNameCache[uuid]}`);
-            } else {
-                // 其他无效情况
-                playerNameCache[uuid] = null; // 如果数据无效或名称缺失，则设为 null
-                logDebug(`[getPlayerNameCached] 未能从结果中提取有效名称`);
-            }
-        } else {
-        logDebug(`[getPlayerNameCached] 缓存命中 UUID: ${uuid}, 名称: ${playerNameCache[uuid]}`);
-    }
-    return playerNameCache[uuid];
-}
 
 
 // 获取所有可用的自定义权限组的唯一标识符列表
@@ -96,67 +69,18 @@ function getAvailableGroups() {
 }
 
 
-// 保存默认权限组配置
-function saveDefaultGroupConfig(data) {
-    let db;
-    try {
-        db = getDbSession();
 
-        // 开始一个事务
-        db.exec("BEGIN TRANSACTION"); // <- Optimization: Transaction
-
-        // 清空旧数据
-        db.exec("DELETE FROM default_groups");
-
-        // Prepare statement
-        const stmt = db.prepare("INSERT INTO default_groups (areaId, groupName) VALUES (?, ?)"); // <- Optimization: Prepare statement
-
-        // 插入新数据
-        let count = 0;
-        for(const areaId in data) {
-            if (data.hasOwnProperty(areaId) && typeof areaId === 'string' && typeof data[areaId] === 'string') {
-                stmt.bind([areaId, data[areaId]]);
-                stmt.execute();
-                stmt.reset(); // Reset for next iteration
-                count++;
-            } else {
-                logger.warn(`跳过无效的默认权限组配置: AreaID=${areaId}, GroupName=${data[areaId]}`);
-                stmt.reset(); // Still reset
-            }
-        }
-
-        // 提交事务
-        db.exec("COMMIT"); // <- Optimization: Commit transaction
-
-        logDebug(`成功保存 ${count} 条默认权限组配置到数据库`);
-        return true;
-    } catch(e) {
-        logger.error(`保存默认权限组配置失败: ${e}`, e.stack);
-        // 发生错误时回滚事务
-        if (db && db.isOpen()) {
-            try {
-                db.exec("ROLLBACK"); // <- Optimization: Rollback on error
-                logger.info("默认权限组配置保存事务已回滚");
-            } catch(rollbackErr) {
-                logger.error(`事务回滚失败: ${rollbackErr}`);
-            }
-        }
-        return false;
-    } finally {
-         // Finalize/reset stmt if needed
-    }
-}
 
 // 为区域设置默认权限组 (groupName 为 null 表示使用系统默认)
 function setAreaDefaultGroup(areaId, groupName) {
     // Validate areaId
     if (typeof areaId !== 'string' || !areaId) {
-         logger.error(`设置区域默认权限组失败：无效 AreaID (${areaId})`);
+        logError(`设置区域默认权限组失败：无效 AreaID (${areaId})`);
          return false;
     }
     // Validate groupName (allow null)
     if (groupName !== null && (typeof groupName !== 'string' || !groupName)) {
-         logger.error(`设置区域默认权限组失败：无效 GroupName (${groupName}) for AreaID (${areaId})`);
+        logError(`设置区域默认权限组失败：无效 GroupName (${groupName}) for AreaID (${areaId})`);
          return false;
     }
     defaultGroupsCache[areaId] = groupName;
@@ -248,14 +172,14 @@ function checkPermission(player, areaData, areaId, permission) {
         return true;
     }
     
-    // 检查玩家是否是区域所有者 (检查 UUID 或 XUID)
+    // 检查玩家是否是区域所有者 
     const isOwner = (area.uuid && player.uuid === area.uuid) || (area.xuid && player.xuid === area.xuid);
     if (isOwner) {
         logDebug(`玩家 ${player.name} 是区域创建者 (UUID 或 XUID 匹配)，授予所有权限`);
         return true;
     }
 
-    // 检查玩家是否是父区域所有者 (检查 UUID 或 XUID)
+    // 检查玩家是否是父区域所有者
     if(area.isSubarea && area.parentAreaId) {
         const parentArea = areaData[area.parentAreaId];
         const isParentOwner = parentArea && ((parentArea.uuid && player.uuid === parentArea.uuid) || (parentArea.xuid && player.xuid === parentArea.xuid));
@@ -459,7 +383,6 @@ function hasPermissionInCustomGroup(customGroups, uuid, groupName, permissionId)
 
 
 // 设置玩家在区域中的权限组
-// 修改：增加 targetGroupCreatorUuid 和 executorCanGrantAdmin 参数
 function setPlayerPermission(playerUuid, areaId, targetGroupName, targetGroupCreatorUuid, executorCanGrantAdmin) {
     // Validation - 更新以包含新参数
     if (typeof playerUuid !== 'string' || !playerUuid ||
@@ -506,7 +429,7 @@ function setPlayerPermission(playerUuid, areaId, targetGroupName, targetGroupCre
     // --- 权限检查结束 ---
 
 
-    // 更新缓存 (逻辑保持不变, 仍然只缓存 groupName)
+    // 更新缓存 
     if (permissionCache[playerUuid]) {
         if (targetGroupName === null) {
             delete permissionCache[playerUuid][areaId];
@@ -638,10 +561,7 @@ function getPlayerAllPermissions(playerUuid) { // Renamed parameter for clarity,
     }
    // return permissionData[playerUuid] || {}; // Old cache logic - Removed duplicate function below
 }
-// // 获取玩家的所有权限数据 (旧的，基于 XUID 和内存变量，已移除)
-// function getPlayerAllPermissions(playerXuid) {
-//     return permissionData[playerXuid] || {};
-// }
+
 
 // 删除区域时清理相关权限数据
 function cleanAreaPermissions(areaId) {
@@ -926,10 +846,8 @@ module.exports = {
     groupHasAdminPermissions,
     getAvailableGroups,
     resetCache,
-    groupHasPermission // 导出新函数
-    // getPlayerAreaGroup and getGroupPermissions moved to api.js
+    groupHasPermission 
 };
 
 
-// 移除 loadDefaultGroupPermissions() 调用
-// getPlayerAreaGroup and getGroupPermissions moved to api.js
+

@@ -54,7 +54,6 @@ function getAreaInfo(areaId) {
 
     const areaData = getAreaData(); // 获取所有区域数据
     if (areaData && areaData[areaId]) {
-        // 返回指定区域数据的深拷贝，防止外部修改影响内部数据
         return JSON.parse(JSON.stringify(areaData[areaId]));
     } else {
         logDebug(`[API] 未找到区域 ID: ${areaId}`);
@@ -249,7 +248,6 @@ async function createArea(creatorPlayer, areaName, point1, point2, parentAreaId 
  * @returns {Promise<{success: boolean, error?: string}>} - 包含操作结果的对象。
  */
 async function modifyArea(modifierPlayer, areaId, modifications) {
-    // Moved require here to avoid circular dependency
     const { getAreaData, updateAreaData } = require('./czareaprotection');
 
     logInfo(`[API] 玩家 ${modifierPlayer.name} 尝试修改区域 ${areaId}，修改内容: ${JSON.stringify(modifications)}`);
@@ -469,7 +467,7 @@ async function modifyArea(modifierPlayer, areaId, modifications) {
 
 
 /**
- * [内部] 根据提供的数据创建一个新区域，用于数据迁移等场景。
+ * [内部] 根据提供的数据创建一个新区域，用于数据迁移,专门用于iland迁移等场景。
  * 跳过玩家对象相关的检查（权限、经济、玩家限制）。
  * @param {string} ownerXuid 区域所有者的 XUID。
  * @param {string | null} ownerUuid 区域所有者的 UUID (如果可用，否则为 null)。
@@ -632,7 +630,6 @@ function checkGroupPermission(uniqueGroupId, permissionId) {
  * @returns {string[]} 格式: ["组名1_创建者UUID1", "组名2_创建者UUID2", ...]
  */
 function getAvailablePermissionGroups() {
-    // 直接调用 permission.js 中的核心逻辑，它现在返回 ID 数组
     return getAvailableGroups();
 }
 
