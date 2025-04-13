@@ -80,7 +80,7 @@ function onAttackBlock(player, block, item) {
     }
 }
 
-// Handler for setting pos2 when using a tool on a block (right click)
+// 
 function onUseItemOn(player, item, block, side, pos) {
     const toolConfig = getToolConfig();
     
@@ -148,7 +148,7 @@ function onPlayerLeft(player) {
     logDebug(`Processing flags and timestamps cleared for leaving player ${player.name}.`);
 }
 
-// Initialize the module
+
 function init() {
     const toolConfig = getToolConfig();
     if (toolConfig.enabled && toolConfig.tool) {

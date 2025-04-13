@@ -4,12 +4,11 @@ const { worldToChunkCoords } = require('./spatialIndex');
 const { checkPermission } = require('./permission');
 const { PERMISSIONS } = require('./permissionRegistry');
 const { loadConfig } = require('./configManager');
-const config = loadConfig(); // 在文件顶部加载配置
+const config = loadConfig(); // 在文件顶部加载配置 - 保持不变
 const iListenAttentively = require('../iListenAttentively-LseExport/lib/iListenAttentively.js');
 const { logDebug, logInfo, logWarning, logError } = require('./logger');
 require('./ruleHandler'); // 引入规则处理器
 const playerPositionHistory = {};
-
 
 
 /**
@@ -82,7 +81,8 @@ function handleAttackPermission(player, targetEntity) {
     const pos = targetEntity.pos;
     const areaData = getAreaData();
     const spatialIndex = getSpatialIndex();
-    const currentConfig = loadConfig(); // 重新加载以获取最新配置
+    // const currentConfig = loadConfig(); // 移除重复加载
+    const currentConfig = config; // 使用顶部加载的配置
 
     logDebug(`玩家 ${player.name} 尝试攻击实体 ${targetEntity.type} at (${pos.x}, ${pos.y}, ${pos.z})`);
 
@@ -169,9 +169,10 @@ const containerPermissionMap = {
     // 可以继续添加其他容器类型
 };
 
-// 使用函数确保每次都获取最新的 config
+// 使用顶部加载的 config
 const getItemUsePermissionMap = () => {
-    const currentConfig = loadConfig();
+    // const currentConfig = loadConfig(); // 移除重复加载
+    const currentConfig = config; // 使用顶部加载的配置
     return [
         { types: currentConfig.itemTypes?.bow, permission: PERMISSIONS.USE_BOW, message: "§c你没有权限在此区域使用弓！" },
         { types: currentConfig.itemTypes?.crossbow, permission: PERMISSIONS.USE_CROSSBOW, message: "§c你没有权限在此区域使用弩！" },
@@ -186,7 +187,8 @@ const getItemUsePermissionMap = () => {
 };
 
 const getItemOnBlockPermissionMap = () => {
-    const currentConfig = loadConfig();
+    // const currentConfig = loadConfig(); // 移除重复加载
+    const currentConfig = config; // 使用顶部加载的配置
     return [
         // 方块交互优先
         { blockTypes: currentConfig.blockTypes?.daylightDetector, permission: PERMISSIONS.USE_DAYLIGHT_DETECTOR, message: "§c你没有权限操作这个阳光探测器！" },
@@ -236,7 +238,8 @@ if (config.listenerControl.onOpenContainer) {
         const pos = block.pos;
         const areaData = getAreaData();
         const spatialIndex = getSpatialIndex();
-        const currentConfig = loadConfig(); // 获取最新配置
+        // const currentConfig = loadConfig(); // 移除重复加载
+        const currentConfig = config; // 使用顶部加载的配置
 
         // 不在区域内直接允许
         const areasAtPos = getPriorityAreasAtPosition(pos, areaData, spatialIndex);
@@ -327,7 +330,8 @@ if (config.listenerControl.onRide) {
         const pos = entity2.pos;
         const areaData = getAreaData();
         const spatialIndex = getSpatialIndex();
-        const currentConfig = loadConfig(); // 获取最新配置
+        // const currentConfig = loadConfig(); // 移除重复加载
+        const currentConfig = config; // 使用顶部加载的配置
 
         logDebug(`玩家 ${player.name} 尝试骑乘实体 ${entity2.type} at (${pos.x}, ${pos.y}, ${pos.z})`);
 
@@ -415,7 +419,8 @@ if (config.listenerControl.onMobHurt) {
 if (config.listenerControl.onAttackBlock) {
     mc.listen("onAttackBlock", (player, block, item) => {
         const pos = block.pos;
-        const currentConfig = loadConfig(); // 获取最新配置
+        // const currentConfig = loadConfig(); // 移除重复加载
+        const currentConfig = config; // 使用顶部加载的配置
 
         // 优先检查龙蛋交互
         if (currentConfig.blockTypes?.dragonEgg && matchesIdPattern(block.type, currentConfig.blockTypes.dragonEgg)) {
@@ -462,7 +467,8 @@ if (config.listenerControl.onUseItemOn) {
         const areaData = getAreaData();
         const spatialIndex = getSpatialIndex();
         const itemOnBlockMap = getItemOnBlockPermissionMap(); // 获取最新的映射
-        const currentConfig = loadConfig(); // 获取最新配置
+        // const currentConfig = loadConfig(); // 移除重复加载
+        const currentConfig = config; // 使用顶部加载的配置
 
         // 不在区域内直接允许
         const areasAtPos = getPriorityAreasAtPosition(blockPos, areaData, spatialIndex);
@@ -515,7 +521,8 @@ if (config.listenerControl.onPlayerInteractEntity) { // 用户请求
         const pos = entity.pos;
         const areaData = getAreaData();
         const spatialIndex = getSpatialIndex();
-        const currentConfig = loadConfig(); // 获取最新配置
+        // const currentConfig = loadConfig(); // 移除重复加载
+        const currentConfig = config; // 使用顶部加载的配置
 
         logDebug(`玩家 ${player.name} 尝试与实体 ${entity.type} 交互 at (${pos.x}, ${pos.y}, ${pos.z})`);
 
@@ -695,7 +702,7 @@ function handlePlayerMovement(player) {
     const currentPos = player.pos;
     if (!currentPos || currentPos.x === undefined || currentPos.y === undefined || currentPos.z === undefined || currentPos.dimid === undefined) {
         //logDebug(`玩家 ${player.name} 位置无效或不完整，跳过移动检查`);
-        return; // 增加更严格的位置有效性检查
+        return; 
     }
 
     const areaData = getAreaData();
@@ -734,23 +741,9 @@ function handlePlayerMovement(player) {
     if (currentPriorityAreaId !== prevPriorityAreaId) {
         // 最高优先级区域已改变 (进入新区域或离开区域)
 
-        // --- 推送离开事件 (如果之前在区域内) ---
-        if (prevPriorityAreaId) {
-            try {
-                const leaveEventData = {
-                    playerUuid: playerUUID,
-                    areaId: prevPriorityAreaId
-                };
-                iListenAttentively.publish("czareaprotection::playerLeaveArea", leaveEventData); // Corrected event name
-                logDebug(`Published czareaprotection::playerLeaveArea for player ${player.name}, area ${prevPriorityAreaId}`);
-            } catch (e) {
-                logError(`Error publishing "czareaprotection::playerLeaveArea": ${e.message}`); // Corrected log message
-            }
-        }
-
         if (currentPriorityArea) {
             // 进入了一个新的最高优先级区域
-            //logDebug(`玩家 ${player.name} 尝试进入新的最高优先级区域 ${currentPriorityArea.area.name} (ID: ${currentPriorityAreaId})，先前区域ID: ${prevPriorityAreaId}`);
+            logDebug(`玩家 ${player.name} 尝试进入新的最高优先级区域 ${currentPriorityArea.area.name} (ID: ${currentPriorityAreaId})，先前区域ID: ${prevPriorityAreaId}`);
 
             // 检查进入权限
             if (!checkPriorityPermission(player, currentPos, PERMISSIONS.ENTER_AREA.id, areaData, spatialIndex)) {
@@ -786,27 +779,18 @@ function handlePlayerMovement(player) {
                     return; // 无论传送是否成功，都阻止进入并返回
                 }
             } else {
-                //logDebug(`玩家 ${player.name} 权限检查通过，允许进入区域 ${currentPriorityArea.area.name}`);
-                // --- 推送进入事件 ---
-                try {
-                    const enterEventData = {
-                        playerUuid: playerUUID,
-                        areaId: currentPriorityAreaId
-                    };
-                iListenAttentively.publish("czareaprotection::playerEnterArea", enterEventData); // Corrected event name
-                logDebug(`Published czareaprotection::playerEnterArea for player ${player.name}, area ${currentPriorityAreaId}`);
-            } catch (e) {
-                logError(`Error publishing czareaprotection::playerEnterArea: ${e.message}`); // Corrected log message
-                }
+                logDebug(`玩家 ${player.name} 权限检查通过，允许进入区域 ${currentPriorityArea.area.name}`);
+                // 事件推送已移至 checkPlayerArea
                 // 权限允许，继续执行下面的历史更新
             }
         } else {
             // 离开了所有区域 (currentPriorityAreaId is null, prevPriorityAreaId was not)
-            //logDebug(`玩家 ${player.name} 已离开区域 ${prevPriorityArea.area.name} (ID: ${prevPriorityAreaId}) 进入野外`);
-            // 离开事件已在上面推送，继续执行下面的历史更新
+            logDebug(`玩家 ${player.name} 已离开区域 ${prevPriorityArea.area.name} (ID: ${prevPriorityAreaId}) 进入野外`);
+            // 事件推送已移至 checkPlayerArea
+            // 继续执行下面的历史更新
         }
     } else {
-         // logDebug(`玩家 ${player.name} 仍在同一最高优先级区域 ${currentPriorityAreaId ? currentPriorityArea.area.name : '野外'}`);
+         logDebug(`玩家 ${player.name} 仍在同一最高优先级区域 ${currentPriorityAreaId ? currentPriorityArea.area.name : '野外'}`);
          // 仍在同一区域或都在区域外，无需特殊处理，只需更新历史
     }
 
@@ -872,7 +856,7 @@ if (config.listenerControl.playerMovementCheck) {
         players.forEach(player => {
             handlePlayerMovement(player);
         });
-    }, 500); // 比区域显示更频繁地检查，例如每500毫秒
+    }, 500); 
 }
 
 
@@ -884,7 +868,8 @@ if (config.listenerControl.onBlockInteracted) { // 用户请求
         const areaData = getAreaData();
         const spatialIndex = getSpatialIndex();
         const itemOnBlockMap = getItemOnBlockPermissionMap(); // 获取最新映射
-        const currentConfig = loadConfig(); // 获取最新配置
+        // const currentConfig = loadConfig(); // 移除重复加载
+        const currentConfig = config; // 使用顶部加载的配置
 
         // 检查是否在保护区域内
         const areasAtPos = getPriorityAreasAtPosition(blockPos, areaData, spatialIndex);

@@ -92,6 +92,7 @@ function createTables() {
         );
     `);
      dbSession.exec(`CREATE INDEX IF NOT EXISTS idx_permissions_area ON permissions (areaId);`); // <- Optimization: Index for area-based permission lookup
+     dbSession.exec(`CREATE INDEX IF NOT EXISTS idx_permissions_player ON permissions (playerUuid);`); // <- Optimization: Index for player-based permission lookup
 
     // 自定义权限组表 - 复合主键自带索引
     dbSession.exec(`
@@ -150,7 +151,6 @@ function getDbSession() {
         logWarning("数据库连接丢失或未初始化，尝试重新连接...");
         if (!initDatabase()) {
             logError("数据库重连失败！");
-            // 可以考虑抛出错误或返回null，取决于上层如何处理
             throw new Error("无法获取数据库连接");
         }
     }

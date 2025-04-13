@@ -42,30 +42,47 @@ function groupHasAdminPermissions(group) {
 
 
 
-// 获取所有可用的自定义权限组的唯一标识符列表
-// 返回格式: ["组名1_创建者UUID1", "组名2_创建者UUID2", ...]
+// 获取所有可用的自定义权限组
+// 返回格式: { "组名1_创建者UUID1": groupDetails1, "组名2_创建者UUID2": groupDetails2, ... }
+// groupDetails 包含 creatorUuid, creatorName, originalGroupName, name, permissions 等
 function getAvailableGroups() {
-    let availableGroupIds = [];
+    let availableGroups = {};
     try {
         // loadCustomGroups 返回格式为 { uuid: { groupName: groupDetails } }
-        const allPlayerGroups = loadCustomGroups(); // 使用 loadCustomGroups()
+        const allPlayerGroups = loadCustomGroups(); // { creatorUuid: { originalGroupName: { name, permissions, inherit } } }
         logDebug(`[getAvailableGroups] loadCustomGroups 返回 ${Object.keys(allPlayerGroups).length} 个玩家的组`);
 
+        // 获取所有玩家名称用于填充 creatorName
+        const allPlayersData = getOfflinePlayerData() || [];
+        const playerMap = {}; // { uuid: name }
+        allPlayersData.forEach(p => playerMap[p.uuid] = p.name);
+
         for (const creatorUuid in allPlayerGroups) {
-            for (const groupName in allPlayerGroups[creatorUuid]) {
-                // 使用 groupName 和 creatorUuid 创建唯一键
-                const uniqueKey = `${groupName}_${creatorUuid}`;
-                availableGroupIds.push(uniqueKey);
-                logDebug(`[getAvailableGroups] 添加组 ID: ${uniqueKey}`);
+            const creatorName = playerMap[creatorUuid] || `未知UUID(${creatorUuid.substring(0, 8)}...)`; // 获取创建者名称
+            for (const originalGroupName in allPlayerGroups[creatorUuid]) {
+                const groupDetails = allPlayerGroups[creatorUuid][originalGroupName];
+                // 使用 originalGroupName 和 creatorUuid 创建唯一键
+                const uniqueKey = `${originalGroupName}_${creatorUuid}`;
+
+                // 补充 groupDetails 缺少的信息
+                const fullGroupDetails = {
+                    ...groupDetails, // 包含 name, permissions, inherit
+                    originalGroupName: originalGroupName, // 添加原始组名
+                    creatorUuid: creatorUuid, // 添加创建者 UUID
+                    creatorName: creatorName // 添加创建者名称
+                };
+
+                availableGroups[uniqueKey] = fullGroupDetails;
+                logDebug(`[getAvailableGroups] 添加组: ${uniqueKey} -> ${JSON.stringify(fullGroupDetails)}`);
             }
         }
     } catch (error) {
-        logError(`获取自定义权限组 ID 时出错: ${error}`, error.stack);
-        availableGroupIds = []; // 出错时返回空数组
+        logError(`获取自定义权限组时出错: ${error}`, error.stack);
+        availableGroups = {}; // 出错时返回空对象
     }
 
-    logDebug(`[getAvailableGroups] 最终返回 ${availableGroupIds.length} 个可用的自定义权限组 ID`);
-    return availableGroupIds; // 返回唯一 ID 字符串数组
+    logDebug(`[getAvailableGroups] 最终返回 ${Object.keys(availableGroups).length} 个可用的自定义权限组`);
+    return availableGroups; // 返回包含详细信息的对象
 }
 
 
@@ -179,6 +196,19 @@ function checkPermission(player, areaData, areaId, permission) {
         return true;
     }
 
+    // --- 优化: 预编译查找组创建者UUID的语句 ---
+    const db = getDbSession();
+    let findGroupCreatorStmt;
+    try {
+        findGroupCreatorStmt = db.prepare("SELECT uuid FROM custom_groups WHERE groupName = ? LIMIT 1");
+    } catch (e) {
+        logError(`预编译 findGroupCreatorStmt 失败: ${e.message}`, e.stack);
+        // 如果预编译失败，后续依赖此语句的检查将无法进行，可能需要返回 false 或抛出错误
+        // 这里选择记录错误并允许函数继续，但依赖此语句的检查会跳过
+    }
+    // --- 结束优化 ---
+
+
     // 检查玩家是否是父区域所有者
     if(area.isSubarea && area.parentAreaId) {
         const parentArea = areaData[area.parentAreaId];
@@ -194,18 +224,19 @@ function checkPermission(player, areaData, areaId, permission) {
     if(area.isSubarea && area.parentAreaId) {
         // 尝试获取该玩家在此子区域的特定权限 - 使用缓存
         const playerCurrentAreaGroup = getPlayerPermissionCached(player.uuid, areaId);
-        
-        if (playerCurrentAreaGroup) {
+
+        if (playerCurrentAreaGroup && findGroupCreatorStmt) { // 检查语句是否成功编译
             // 根据玩家特定权限组名查找是哪个UUID创建的此组
-            const db = getDbSession();
-            const stmt = db.prepare("SELECT uuid FROM custom_groups WHERE groupName = ? LIMIT 1");
-            stmt.bind(playerCurrentAreaGroup);
-            
+            // const db = getDbSession(); // db 已在上面获取
+            // const stmt = db.prepare("SELECT uuid FROM custom_groups WHERE groupName = ? LIMIT 1"); // 使用预编译的语句
+            findGroupCreatorStmt.reset(); // 重置语句以备新绑定
+            findGroupCreatorStmt.bind(playerCurrentAreaGroup);
+
             let groupUuid = null;
-            if (stmt.step()) {
-                groupUuid = stmt.fetch().uuid;
+            if (findGroupCreatorStmt.step()) {
+                groupUuid = findGroupCreatorStmt.fetch().uuid; // 使用 findGroupCreatorStmt
             }
-            
+
             if (groupUuid) {
                 // 使用缓存获取组详情
                 const group = getCustomGroupCached(groupUuid, playerCurrentAreaGroup);
@@ -219,17 +250,18 @@ function checkPermission(player, areaData, areaId, permission) {
         
         // 检查子区域默认权限组 - 使用缓存
         const areaDefaultGroup = getAreaDefaultGroupCached(areaId);
-        if (areaDefaultGroup) {
+        if (areaDefaultGroup && findGroupCreatorStmt) { // 检查语句是否成功编译
             // 查找此组详情
-            const db = getDbSession();
-            const stmt = db.prepare("SELECT uuid FROM custom_groups WHERE groupName = ? LIMIT 1");
-            stmt.bind(areaDefaultGroup);
-            
+            // const db = getDbSession(); // db 已在上面获取
+            // const stmt = db.prepare("SELECT uuid FROM custom_groups WHERE groupName = ? LIMIT 1"); // 使用预编译的语句
+            findGroupCreatorStmt.reset(); // 重置语句
+            findGroupCreatorStmt.bind(areaDefaultGroup);
+
             let groupUuid = null;
-            if (stmt.step()) {
-                groupUuid = stmt.fetch().uuid;
+            if (findGroupCreatorStmt.step()) {
+                groupUuid = findGroupCreatorStmt.fetch().uuid; // 使用 findGroupCreatorStmt
             }
-            
+
             if (groupUuid) {
                 const group = getCustomGroupCached(groupUuid, areaDefaultGroup);
                 if (group) {
@@ -249,19 +281,20 @@ function checkPermission(player, areaData, areaId, permission) {
     logDebug(`区域 ${areaId} ${isSubarea ? '是子区域，父区域为: ' + area.parentAreaId : '不是子区域'}`);
     
     // 1. 检查当前区域特定玩家权限组
-    if (playerSpecificGroup) {
+    if (playerSpecificGroup && findGroupCreatorStmt) { // 检查语句是否成功编译
         logDebug(`玩家 ${player.name} 在当前区域 ${areaId} 有指定权限组: ${playerSpecificGroup}`);
-        
+
         // 查找此组详情
-        const db = getDbSession();
-        const stmt = db.prepare("SELECT uuid FROM custom_groups WHERE groupName = ? LIMIT 1");
-        stmt.bind(playerSpecificGroup);
-        
+        // const db = getDbSession(); // db 已在上面获取
+        // const stmt = db.prepare("SELECT uuid FROM custom_groups WHERE groupName = ? LIMIT 1"); // 使用预编译的语句
+        findGroupCreatorStmt.reset(); // 重置语句
+        findGroupCreatorStmt.bind(playerSpecificGroup);
+
         let groupUuid = null;
-        if (stmt.step()) {
-            groupUuid = stmt.fetch().uuid;
+        if (findGroupCreatorStmt.step()) {
+            groupUuid = findGroupCreatorStmt.fetch().uuid; // 使用 findGroupCreatorStmt
         }
-        
+
         if (groupUuid) {
             const group = getCustomGroupCached(groupUuid, playerSpecificGroup);
             if (group) {
@@ -277,19 +310,20 @@ function checkPermission(player, areaData, areaId, permission) {
     // 2. 如果是子区域，检查主区域特定玩家权限组
     if (isSubarea) {
         const playerParentSpecificGroup = getPlayerPermissionCached(player.uuid, area.parentAreaId);
-        if (playerParentSpecificGroup) {
+        if (playerParentSpecificGroup && findGroupCreatorStmt) { // 检查语句是否成功编译
             logDebug(`玩家 ${player.name} 在父区域 ${area.parentAreaId} 有指定权限组: ${playerParentSpecificGroup}`);
-            
+
             // 查找此组详情
-            const db = getDbSession();
-            const stmt = db.prepare("SELECT uuid FROM custom_groups WHERE groupName = ? LIMIT 1");
-            stmt.bind(playerParentSpecificGroup);
-            
+            // const db = getDbSession(); // db 已在上面获取
+            // const stmt = db.prepare("SELECT uuid FROM custom_groups WHERE groupName = ? LIMIT 1"); // 使用预编译的语句
+            findGroupCreatorStmt.reset(); // 重置语句
+            findGroupCreatorStmt.bind(playerParentSpecificGroup);
+
             let groupUuid = null;
-            if (stmt.step()) {
-                groupUuid = stmt.fetch().uuid;
+            if (findGroupCreatorStmt.step()) {
+                groupUuid = findGroupCreatorStmt.fetch().uuid; // 使用 findGroupCreatorStmt
             }
-            
+
             if (groupUuid) {
                 const group = getCustomGroupCached(groupUuid, playerParentSpecificGroup);
                 if (group) {
@@ -304,48 +338,50 @@ function checkPermission(player, areaData, areaId, permission) {
     }
 
     // 3. 检查当前区域默认权限组 - 使用缓存
-    const areaDefaultGroup = getAreaDefaultGroupCached(areaId);
-    if (areaDefaultGroup) {
-        logDebug(`区域 ${areaId} 使用默认权限组: ${areaDefaultGroup}`);
-        
+    const areaDefaultGroupCurrent = getAreaDefaultGroupCached(areaId); // 重命名变量避免与上面子区域检查中的 areaDefaultGroup 冲突
+    if (areaDefaultGroupCurrent && findGroupCreatorStmt) { // 检查语句是否成功编译
+        logDebug(`区域 ${areaId} 使用默认权限组: ${areaDefaultGroupCurrent}`);
+
         // 查找此组详情
-        const db = getDbSession();
-        const stmt = db.prepare("SELECT uuid FROM custom_groups WHERE groupName = ? LIMIT 1");
-        stmt.bind(areaDefaultGroup);
-        
+        // const db = getDbSession(); // db 已在上面获取
+        // const stmt = db.prepare("SELECT uuid FROM custom_groups WHERE groupName = ? LIMIT 1"); // 使用预编译的语句
+        findGroupCreatorStmt.reset(); // 重置语句
+        findGroupCreatorStmt.bind(areaDefaultGroupCurrent);
+
         let groupUuid = null;
-        if (stmt.step()) {
-            groupUuid = stmt.fetch().uuid;
+        if (findGroupCreatorStmt.step()) {
+            groupUuid = findGroupCreatorStmt.fetch().uuid; // 使用 findGroupCreatorStmt
         }
-        
+
         if (groupUuid) {
-            const group = getCustomGroupCached(groupUuid, areaDefaultGroup);
+            const group = getCustomGroupCached(groupUuid, areaDefaultGroupCurrent);
             if (group) {
                 const hasPermission = group.permissions.includes(permission);
-                logDebug(`权限检查结果(当前区域默认组 ${areaDefaultGroup}): ${hasPermission ? "允许" : "拒绝"}`);
+                logDebug(`权限检查结果(当前区域默认组 ${areaDefaultGroupCurrent}): ${hasPermission ? "允许" : "拒绝"}`);
                 return hasPermission;
             }
         }
         
-        logWarning(`区域 ${areaId} 设置的默认权限组 ${areaDefaultGroup} 未找到，将忽略此设置。`);
+        logWarning(`区域 ${areaId} 设置的默认权限组 ${areaDefaultGroupCurrent} 未找到，将忽略此设置。`);
     }
 
     // 4. 如果是子区域，检查主区域默认权限组
     if (isSubarea) {
         const parentAreaDefaultGroup = getAreaDefaultGroupCached(area.parentAreaId);
-        if (parentAreaDefaultGroup) {
+        if (parentAreaDefaultGroup && findGroupCreatorStmt) { // 检查语句是否成功编译
             logDebug(`父区域 ${area.parentAreaId} 使用默认权限组: ${parentAreaDefaultGroup}`);
-            
+
             // 查找此组详情
-            const db = getDbSession();
-            const stmt = db.prepare("SELECT uuid FROM custom_groups WHERE groupName = ? LIMIT 1");
-            stmt.bind(parentAreaDefaultGroup);
-            
+            // const db = getDbSession(); // db 已在上面获取
+            // const stmt = db.prepare("SELECT uuid FROM custom_groups WHERE groupName = ? LIMIT 1"); // 使用预编译的语句
+            findGroupCreatorStmt.reset(); // 重置语句
+            findGroupCreatorStmt.bind(parentAreaDefaultGroup);
+
             let groupUuid = null;
-            if (stmt.step()) {
-                groupUuid = stmt.fetch().uuid;
+            if (findGroupCreatorStmt.step()) {
+                groupUuid = findGroupCreatorStmt.fetch().uuid; // 使用 findGroupCreatorStmt
             }
-            
+
             if (groupUuid) {
                 const group = getCustomGroupCached(groupUuid, parentAreaDefaultGroup);
                 if (group) {
@@ -848,6 +884,3 @@ module.exports = {
     resetCache,
     groupHasPermission 
 };
-
-
-

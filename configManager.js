@@ -1,11 +1,11 @@
 // configManager.js
 const CONFIG_PATH = './plugins/area/config.json';
-const CURRENT_VERSION = "1.7.2"; // Increment version due to new config options
+const CURRENT_VERSION = "1.7.3"; // Increment version due to new config options
 const { logInfo, logError, logDebug } = require('./logger'); // 确保引入 logger
 
 const DEFAULT_CONFIG = {
     version: CURRENT_VERSION,
-    spatialIndex: {
+    performance: {
         chunkSize: 16  // 默认区块大小
     },
     // 新增 BSCI 专用配置

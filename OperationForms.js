@@ -2,6 +2,7 @@ const { loadAreaData, saveAreaData } = require('./config');
 const { getAreaData, updateAreaData } = require('./czareaprotection'); // Added updateAreaData
 const { isInArea, isAreaWithinArea, checkNewAreaOverlap, checkAreaSizeLimits, calculateAreaVolume, calculatePlayerTotalAreaSize } = require('./utils'); // Added utils functions and volume/total size calculators
 const getOfflinePlayerData = ll.import("PlayerData", "getOfflinePlayerData");
+const getRecentPlayers = ll.import("PlayerData", "getRecentPlayers"); // <-- 新增：导入获取最近玩家函数
 const { getPlayerCustomGroups, createCustomGroup, editCustomGroup, deleteCustomGroup, getAllCustomGroups } = require('./customGroups'); // Ensure getAllCustomGroups is imported if needed elsewhere, though getAvailableGroups uses it internally
 const { checkPermission, setPlayerPermission, getPlayerPermission, getAvailableGroups, getAreaDefaultGroup, setAreaDefaultGroup, resetCache } = require('./permission'); // Removed DEFAULT_GROUPS import, Added resetCache
 const { isAreaAdmin } = require('./areaAdmin'); // Import isAreaAdmin
@@ -472,7 +473,6 @@ function confirmDeleteArea(player, areaId, origin) {
     });
 }
 
-// 添加 origin 参数
 function confirmTransferArea(player, areaId, newOwnerData, origin) {
     // 获取区域数据
     const areaData = getAreaData(); // 添加这行来获取区域数据
@@ -531,10 +531,9 @@ function confirmTransferArea(player, areaId, newOwnerData, origin) {
              return;
         }
 
-        // --- 新增：检查接收方总区域大小限制 ---
+        // 检查接收方总区域大小限制
         const config = loadConfig(); // 获取配置
         // 检查接收方是否为管理员以及是否启用了总大小限制
-        // 注意: isAreaAdmin 需要接收方的 uuid
         if (!isAreaAdmin(newOwnerData.uuid) && config.maxTotalAreaSizePerPlayer > 0) {
             // 1. 计算接收方当前拥有的主区域总大小
             // 注意: calculatePlayerTotalAreaSize 需要接收方的 xuid
@@ -554,7 +553,6 @@ function confirmTransferArea(player, areaId, newOwnerData, origin) {
             }
              logDebug(`接收方 ${newOwnerData.name} (${newOwnerData.xuid}) 当前总大小: ${receiverCurrentTotalSize}, 待转让区域大小: ${areaToTransferSize}, 限制: ${config.maxTotalAreaSizePerPlayer}`);
         }
-        // --- 检查结束 ---
 
 
         // 更新区域所有者信息
@@ -572,8 +570,6 @@ function confirmTransferArea(player, areaId, newOwnerData, origin) {
                 newOwnerPlayer.tell(`§a玩家 ${player.name} 已将区域 "${currentArea.name}" 转让给你！`);
             }
 
-            // 清理临时绑定数据 (如果还在使用) - 看起来没用了，因为 newOwnerData 是直接传递的
-            // player.setExtraData(`transfer_${newOwnerData.uuid}`, null);
         } else {
             player.tell("§c区域转让失败！");
         }
@@ -582,8 +578,8 @@ function confirmTransferArea(player, areaId, newOwnerData, origin) {
     });
 }
 
-// 添加 origin 参数
-function showTransferAreaForm(player, areaId, origin, currentPage = 0, filter = "") {
+//确认转让
+function showTransferAreaForm(player, areaId, origin, currentPage = 0, filter = "", showAllPlayers = false) {
     const areaData = getAreaData();
     const area = areaData[areaId];
 
@@ -594,8 +590,10 @@ function showTransferAreaForm(player, areaId, origin, currentPage = 0, filter = 
         return;
     }
 
-    // 使用离线玩家数据API获取所有玩家数据
-    const allPlayers = getOfflinePlayerData() || [];
+    // 获取玩家数据 (根据 showAllPlayers 决定来源)
+    const playersSource = showAllPlayers ? getOfflinePlayerData() : getRecentPlayers();
+    const allPlayers = playersSource || [];
+    logDebug(`[showTransferAreaForm] showAllPlayers=${showAllPlayers}, 获取到 ${allPlayers.length} 个玩家数据`);
 
     // 根据搜索关键词过滤玩家
     let filteredPlayers = allPlayers;
@@ -607,16 +605,6 @@ function showTransferAreaForm(player, areaId, origin, currentPage = 0, filter = 
     // 过滤掉当前区域主人
     filteredPlayers = filteredPlayers.filter(p => p.uuid !== player.uuid);
 
-    // 为每个玩家绑定额外数据以便后续使用 - 不再需要，直接传递对象
-    /*
-    filteredPlayers.forEach(p => {
-        player.setExtraData(`transfer_${p.uuid}`, {
-            name: p.name,
-            uuid: p.uuid,
-            xuid: p.xuid
-        });
-    });
-    */
 
     // 加载配置
     const config = loadConfig();
@@ -636,25 +624,29 @@ function showTransferAreaForm(player, areaId, origin, currentPage = 0, filter = 
 
     // 搜索框
     fm.addInput("搜索玩家", "输入玩家名称", filter); // index 0
+    // 显示所有玩家开关
+    fm.addSwitch("显示所有玩家 (默认最近30天)", showAllPlayers); // index 1
 
     // 玩家列表
-    const playerStartIndex = 1;
+    const playerStartIndex = 2; // 索引从 2 开始
     for (let p of pagePlayers) {
         fm.addSwitch(
-            `${p.name}`,
+            `${p.name} (§7${p.lastLoginTime ? new Date(p.lastLoginTime).toLocaleDateString() : '未知'}§r)`, // 显示最后登录时间
             false
         );
     }
+    // 索引计算调整
+    const showAllSwitchIndex = 1;
     const confirmSwitchIndex = playerStartIndex + pagePlayers.length;
     const pageSliderIndex = confirmSwitchIndex + 1;
-    const backSwitchIndex = pageSliderIndex + 1; // 返回开关索引
+    const backSwitchIndex = pageSliderIndex + 1;
 
     // 确认转让开关
-    fm.addSwitch("§c确认转让给选中的玩家", false); 
+    fm.addSwitch("§c确认转让给选中的玩家", false); // index confirmSwitchIndex
 
     // 分页选择器
     const pageItems = Array.from({length: totalPages}, (_, i) => `第${i + 1}页`);
-    fm.addStepSlider("选择页码", pageItems, currentPage); 
+    fm.addStepSlider("选择页码", pageItems, currentPage); // index pageSliderIndex
 
     // 返回按钮
     fm.addSwitch("§c返回", false); // index backSwitchIndex
@@ -671,12 +663,19 @@ function showTransferAreaForm(player, areaId, origin, currentPage = 0, filter = 
         }
 
         const keyword = data[0].trim();
+        const newShowAllState = data[showAllSwitchIndex]; // 获取开关状态
         const confirmed = data[confirmSwitchIndex];
         const newPage = data[pageSliderIndex];
 
-        // 处理页面切换或搜索
+        // 处理显示所有玩家开关切换
+        if (newShowAllState !== showAllPlayers) {
+            showTransferAreaForm(player, areaId, origin, 0, keyword, newShowAllState); // 切换时重置到第一页
+            return;
+        }
+
+        // 处理页面切换或搜索 (保持 showAllPlayers 状态)
         if (keyword !== filter || newPage !== currentPage) {
-            showTransferAreaForm(player, areaId, origin, newPage, keyword); // 传递 origin
+            showTransferAreaForm(player, areaId, origin, newPage, keyword, showAllPlayers); // 传递 showAllPlayers
             return;
         }
 
@@ -698,13 +697,13 @@ function showTransferAreaForm(player, areaId, origin, currentPage = 0, filter = 
         // 验证选择
         if (!confirmed) {
             player.tell("§e请勾选确认转让选项！");
-            showTransferAreaForm(player, areaId, origin, currentPage, filter); // 重新显示
+            showTransferAreaForm(player, areaId, origin, currentPage, filter, showAllPlayers); // 传递 showAllPlayers
             return;
         }
 
         if (selectedCount !== 1) {
             player.tell("§c请只选择一个玩家作为新的区域主人！");
-            showTransferAreaForm(player, areaId, origin, currentPage, filter); // 重新显示
+            showTransferAreaForm(player, areaId, origin, currentPage, filter, showAllPlayers); // 传递 showAllPlayers
             return;
         }
 
@@ -843,7 +842,7 @@ function showAreaRulesForm(player, areaId, origin) {
 
         if(saveAreaData(areaData)) {
             player.tell("§a区域规则设置已保存！");
-            updateAreaData(areaData); // 关键修复：更新内存中的区域数据
+            updateAreaData(areaData); // 更新内存中的区域数据
         } else {
             player.tell("§c保存区域规则失败！");
         }

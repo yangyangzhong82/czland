@@ -1,9 +1,10 @@
 // spatialIndex.js
-const { logDebug, logWarning, logError } = require('./logger'); // 引入日志记录器
+const { logDebug, logWarning, logError ,logInfo,} = require('./logger'); // 引入日志记录器
 const { loadConfig } = require('./configManager'); 
 
 const config = loadConfig();
-const CHUNK_SIZE = config.spatialIndex?.chunkSize || 16; 
+const CHUNK_SIZE = config.performance.chunkSize || 16; 
+logInfo(`构建索引区块大小为 ${CHUNK_SIZE}`)
 
 // 将世界坐标转换为区块坐标
 function worldToChunkCoords(x, z) {

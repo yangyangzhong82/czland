@@ -86,7 +86,7 @@ function showSelectionVisualization(player, pos1, pos2) {
     );
 
     if (visualizationId) {
-        player.tell(`§a选区可视化已显示 (绿色)，将在§e${duration}秒§a后自动消失`);
+        player.tell(`§a选区可视化已显示 (绿色)，将在§e${duration}秒§a后自动消失`,4);
 
         // 保存可视化ID和定时器ID
         playerVisualizations[player.uuid] = {
@@ -224,7 +224,7 @@ function showAreaWithChildrenVisualization(player, areaId) {
         if (subAreaLevel2Count > 0) {
             message += ` 和 §d${subAreaLevel2Count} §b个二级子区域`; // 使用不同颜色区分二级
         }
-        message += `，将在§e${duration}秒§b后自动消失`;
+        message += `，将在§e${duration}秒§b后自动消失`,4;
         player.tell(message);
 
     } else if (mainAreaVisId) {

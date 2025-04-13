@@ -1,4 +1,5 @@
 const iListenAttentively = require('../iListenAttentively-LseExport/lib/iListenAttentively.js');
+const {logDebug, logInfo, logWarning, logError } = require('./logger');
 mc.listen("onServerStarted", () => {
     
     try {
@@ -8,7 +9,7 @@ mc.listen("onServerStarted", () => {
 
         if (!iListenAttentively.hasEvent(enterEventName)) {
             if (iListenAttentively.RegisterEvent(enterEventName,"czareaprotection")) {
-                logger.warn(`自定义事件 "${enterEventName}" 注册成功`);
+                logDebug(`自定义事件 "${enterEventName}" 注册成功`);
             } else {
                 logger.warn(`尝试注册新事件 "${enterEventName}" 失败`);
             }
@@ -18,7 +19,7 @@ mc.listen("onServerStarted", () => {
 
         if (!iListenAttentively.hasEvent(leaveEventName)) {
             if (iListenAttentively.RegisterEvent(leaveEventName,"czareaprotection")) {
-                logger.warn(`自定义事件 "${leaveEventName}" 注册成功`);
+                logDebug(`自定义事件 "${leaveEventName}" 注册成功`);
             } else {
                 logger.warn(`尝试注册新事件 "${leaveEventName}" 失败`);
             }
@@ -33,7 +34,7 @@ mc.listen("onServerStarted", () => {
     iListenAttentively.emplaceListener(
         "czareaprotection::playerEnterArea",
         event => {
-            logger.warn(event.toSNBT());
+            logDebug(event.toSNBT());
                  
         
         },
@@ -42,7 +43,7 @@ mc.listen("onServerStarted", () => {
     iListenAttentively.emplaceListener(
         "czareaprotection::playerLeaveArea",
         event => {
-            logger.warn(event.toSNBT());
+            logDebug(event.toSNBT());
                  
         
         },
@@ -50,11 +51,11 @@ mc.listen("onServerStarted", () => {
     );
     
     // 在控制台输出所有事件信息
-    logger.info(name);
-    logger.info("=== 所有已注册的事件 ===");
+    logDebug(name);
+    logDebug("=== 所有已注册的事件 ===");
     allEvents.forEach(event => {
-        logger.info(`事件名: ${event.eventName}`);
-        logger.info(`所属模组: ${event.modName}`);
-        logger.info("-------------------");
+        logDebug(`事件名: ${event.eventName}`);
+        logDebug(`所属模组: ${event.modName}`);
+        logDebug("-------------------");
     });
 })

@@ -9,10 +9,13 @@ const { buildSpatialIndex } = require('./spatialIndex'); // 引入空间索引�
 const { initLogger, logDebug, logInfo, logWarning, logError } = require('./logger'); // 导入日志记录器初始化函数
 const { checkPermission } = require('./permission'); // 导入权限检查函数
 const { getHighestPriorityArea } = require('./utils'); // 导入获取最高优先级区域函数
+const iListenAttentively = require('../iListenAttentively-LseExport/lib/iListenAttentively.js'); // 导入 ila
 let playerCurrentAreas = {}; // 存储玩家当前所在区域ID
 let areaData = {}; // 存储所有区域数据
 let spatialIndex = {}; // 存储空间索引
 let config = {}; // 存储加载的配置
+let playerSettingsCache = {}; // 缓存玩家设置 { uuid: { settings: {}, timestamp: Date.now() } }
+const SETTINGS_CACHE_TTL = 5 * 60 * 1000; // 玩家设置缓存有效期 (5分钟)
 
 // 初始化插件
 function initializePlugin() {
@@ -66,7 +69,7 @@ function initializeCommands() {
 function updateAreaData(newAreaData) {
     areaData = newAreaData;
     spatialIndex = buildSpatialIndex(areaData); // 更新数据时重建索引
-    logInfo(`区域数据已更新，空间索引已重建，包含 ${Object.keys(spatialIndex).length} 个区块条目。`);
+    logDebug(`区域数据已更新，空间索引已重建，包含 ${Object.keys(spatialIndex).length} 个区块条目。`);
 
     // 自动检查所有在线玩家的位置以更新显示
     let players = mc.getOnlinePlayers();
@@ -76,11 +79,24 @@ function updateAreaData(newAreaData) {
 // 服务器启动后稍作延迟再注册命令，确保其他插件或系统初始化完成
 setTimeout(initializeCommands, 0);
 
-// 检查玩家当前位置所在的区域，并根据设置显示信息
+// 检查玩家当前位置所在的区域，并根据设置显示信息 - 优化：增加设置缓存
 function checkPlayerArea(pl) {
     const { getPlayerSettings } = require('./playerSettings'); // 获取玩家个人设置
     const { getPriorityAreasAtPosition } = require('./utils'); // 获取指定位置的区域列表（按优先级）
-    const settings = getPlayerSettings(pl.uuid); // 读取该玩家的显示设置
+    const now = Date.now();
+    const uuid = pl.uuid;
+
+    // --- 获取玩家设置 (带缓存) ---
+    let settings;
+    if (playerSettingsCache[uuid] && (now - playerSettingsCache[uuid].timestamp < SETTINGS_CACHE_TTL)) {
+        settings = playerSettingsCache[uuid].settings;
+        // logDebug(`[Cache Hit] getPlayerSettings for ${pl.name}`); // Optional: Cache hit log
+    } else {
+        settings = getPlayerSettings(uuid); // 读取该玩家的显示设置
+        playerSettingsCache[uuid] = { settings: settings, timestamp: now }; // 更新缓存
+        // logDebug(`[Cache Miss] getPlayerSettings for ${pl.name}`); // Optional: Cache miss log
+    }
+    // --- 结束获取玩家设置 ---
 
     const pos = pl.pos;
     // 检查玩家位置数据是否有效（有时玩家刚加入或传送时可能暂时无效）
@@ -90,11 +106,11 @@ function checkPlayerArea(pl) {
     }
 
     // 检查上次显示标题的时间，避免过于频繁的闪烁（如果需要）
-    const now = Date.now();
+    // const now = Date.now(); // now 变量已在上面定义
     if (!pl._lastAreaDisplay) {
         pl._lastAreaDisplay = 0; // 初始化上次显示时间戳
     }
-    const previousAreaId = playerCurrentAreas[pl.uuid]; // 获取玩家上次所在的区域ID
+    const previousAreaId = playerCurrentAreas[uuid]; // 获取玩家上次所在的区域ID (使用 uuid)
 
     // 使用空间索引查询获取该位置的所有区域（已按优先级排序）
     const areasAtPos = getPriorityAreasAtPosition(pos, areaData, spatialIndex); // 传递 areaData 和 spatialIndex
@@ -110,12 +126,41 @@ function checkPlayerArea(pl) {
         const areaAllowsTitle = areaRules.displayTitle !== false; // 如果规则不存在或为 true，则允许
         const areaAllowsActionBar = areaRules.displayActionBar !== false; // 如果规则不存在或为 true，则允许
 
-        // 如果玩家进入了新的区域
+        // 如果玩家进入了新的区域或离开了之前的区域
         if(previousAreaId !== currentAreaId) {
-            playerCurrentAreas[pl.uuid] = currentAreaId; // 更新玩家当前区域ID
+            // --- 推送离开事件 (如果之前在区域内) ---
+            if (previousAreaId) {
+                try {
+                    const leaveEventData = {
+                        playerUuid: uuid,
+                        areaId: previousAreaId
+                    };
+                    iListenAttentively.publish("czareaprotection::playerLeaveArea", leaveEventData);
+                    logDebug(`Published czareaprotection::playerLeaveArea for player ${pl.name}, area ${previousAreaId}`);
+                } catch (e) {
+                    logError(`Error publishing "czareaprotection::playerLeaveArea": ${e.message}`);
+                }
+            }
 
-            // 标题显示 - 区域规则和玩家设置都允许时才显示
-            if(areaAllowsTitle && settings.displayTitle) {
+            // --- 推送进入事件 (如果现在在区域内) ---
+            if (currentAreaId) {
+                try {
+                    const enterEventData = {
+                        playerUuid: uuid,
+                        areaId: currentAreaId
+                    };
+                    iListenAttentively.publish("czareaprotection::playerEnterArea", enterEventData);
+                    logDebug(`Published czareaprotection::playerEnterArea for player ${pl.name}, area ${currentAreaId}`);
+                } catch (e) {
+                    logError(`Error publishing "czareaprotection::playerEnterArea": ${e.message}`);
+                }
+            }
+
+            // 更新玩家当前区域ID
+            playerCurrentAreas[uuid] = currentAreaId;
+
+            // 标题显示 - 区域规则和玩家设置都允许时才显示 (仅在进入新区域时)
+            if(currentAreaId && areaAllowsTitle && settings.displayTitle) {
                 pl.setTitle(`§e你已进入区域`, 2, 10, 40, 10); // 副标题
                 pl.setTitle(`§b${currentAreaName}`, 3, 10, 40, 10); // 主标题
                 pl._lastAreaDisplay = now; // 更新显示时间（放在显示之后）
@@ -169,18 +214,26 @@ function checkPlayerArea(pl) {
         if(settings.displayActionBar) {
             pl.sendText("", 4); // 使用 type 4 发送空文本来清除 action bar
         }
-        // 如果玩家之前在某个区域内，现在离开了，则重置其当前区域状态
-        // 这样下次进入任何区域时都能触发标题显示（如果设置允许）
-        if (playerCurrentAreas[pl.uuid] !== undefined) {
-             playerCurrentAreas[pl.uuid] = undefined; // 标记玩家不在任何区域内
-             // 可选：如果离开区域也需要提示，可以在这里添加 pl.setTitle("", 0); 来清除标题
+        // 如果玩家之前在某个区域内，现在离开了 (currentAreaId is null)
+        if (previousAreaId && !currentAreaId) {
+            // --- 推送离开事件 --- (已在上面处理)
+            // if (previousAreaId) { ... }
+
+            // 重置玩家当前区域状态
+            playerCurrentAreas[uuid] = undefined; // 标记玩家不在任何区域内
+            logDebug(`Player ${pl.name} left area ${previousAreaId}, now in wilderness.`);
+            // 可选：如果离开区域也需要提示，可以在这里添加 pl.setTitle("", 0); 来清除标题
         }
     }
 }
 
-// 玩家离开服务器时，清理其区域状态
+
+// 玩家离开服务器时，清理其区域状态和设置缓存
 mc.listen("onLeft", (pl) => {
-    delete playerCurrentAreas[pl.uuid]; // 从缓存中移除玩家数据
+    const uuid = pl.uuid;
+    delete playerCurrentAreas[uuid]; // 从缓存中移除玩家区域状态数据
+    delete playerSettingsCache[uuid]; // 从缓存中移除玩家设置数据
+    logDebug(`Cleared area state and settings cache for player ${pl.name} (UUID: ${uuid}) on leave.`);
 });
 
 // 定时任务：每隔一段时间检查所有在线玩家的位置并更新区域显示
