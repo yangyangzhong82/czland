@@ -11,12 +11,10 @@
 
 *   **权限检查性能**:
     *   大幅优化了 `checkPermission` 函数的性能。通过为玩家特定权限、区域默认权限组和自定义权限组添加 **缓存机制**，并使用 **预编译的数据库语句** 来减少查询开销。(permission)
-    *   引入 `resetCache` 函数，在权限设置、默认组更改或自定义组编辑后自动 **清理相关缓存**，保证权限判断的及时性和准确性。(permission, OperationForms, areaAdmin, permissionform)
-*   **表单交互**: 改进了涉及玩家列表的表单在翻页和搜索时对已选玩家状态的保持逻辑，便于多选。(areaAdmin, permissionform)
+*   **表单交互**: 改进了涉及玩家列表的表单在翻页和搜索时对已选玩家状态的保持逻辑，便于批量选择。(areaAdmin, permissionform)
 
 ### 🐛 修复 (Fixes)
-
-*   **领地转让**: 修复了在转让领地时，未正确检查接收方是否超出 **总领地大小限制** (`maxTotalAreaSizePerPlayer`) 的问题。(OperationForms)
+(OperationForms)
 *   **权限逻辑**: 修复权限组添加后无可用的权限组添加的问题(permissionfrom)
 *   **配置路径**: 调整了空间索引区块大小 (`chunkSize`) 的配置项路径，从 `spatialIndex.chunkSize` 更改为 `performance.chunkSize`，请注意更新你的配置文件。(spatialIndex, configManager)
 *   **领地管理员**: 修复领地管理员不能正常添加只能添加一个的问题(areaAdmin)
