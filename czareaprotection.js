@@ -111,6 +111,7 @@ function checkPlayerArea(pl) {
         pl._lastAreaDisplay = 0; // 初始化上次显示时间戳
     }
     const previousAreaId = playerCurrentAreas[uuid]; // 获取玩家上次所在的区域ID (使用 uuid)
+    let currentAreaId = undefined; 
 
     // 使用空间索引查询获取该位置的所有区域（已按优先级排序）
     const areasAtPos = getPriorityAreasAtPosition(pos, areaData, spatialIndex); // 传递 areaData 和 spatialIndex
@@ -118,7 +119,7 @@ function checkPlayerArea(pl) {
     if(areasAtPos.length > 0) {
         // 存在区域，获取优先级最高的区域（通常是最内层的子区域）
         const priorityArea = areasAtPos[0];
-        const currentAreaId = priorityArea.id;
+        currentAreaId = priorityArea.id; 
         const currentAreaName = priorityArea.area.name;
         const areaRules = priorityArea.area.rules || {}; // 获取区域规则，如果不存在则为空对象
 

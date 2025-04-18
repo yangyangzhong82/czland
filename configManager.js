@@ -1,6 +1,6 @@
 // configManager.js
 const CONFIG_PATH = './plugins/area/config.json';
-const CURRENT_VERSION = "1.7.3"; // Increment version due to new config options
+const CURRENT_VERSION = "1.7.4"; // Increment version due to new config options
 const { logInfo, logError, logDebug } = require('./logger'); // 确保引入 logger
 
 const DEFAULT_CONFIG = {
@@ -115,18 +115,14 @@ const DEFAULT_CONFIG = {
         noteblock: ["minecraft:note_block"],
         jukebox: ["minecraft:jukebox"],
         button: [
-            /minecraft:.*_button/
         ],
         lever: ["minecraft:lever"],
         composter: ["minecraft:composter"],
         door: [
-            /minecraft:.*_door/
         ],
         trapdoor: [
-            /minecraft:.*_trapdoor/
         ],
         fenceGate: [
-            /minecraft:.*_fence_gate/
         ],
         campfire: [
             "minecraft:campfire",
@@ -143,11 +139,8 @@ const DEFAULT_CONFIG = {
         ],
         respawnAnchor: ["minecraft:respawn_anchor"],
         candle: [
-            /minecraft:.*candle/
         ],
         sign: [
-            /minecraft:.*_sign/,
-            /minecraft:.*_hanging_sign/
         ],
         dragonEgg: ["minecraft:dragon_egg"],
         shovelable: [
@@ -157,8 +150,6 @@ const DEFAULT_CONFIG = {
             "minecraft:mycelium"
         ],
         axeable: [
-            /minecraft:.*_log/,
-            /minecraft:.*_wood/,
             "minecraft:hay_block"
         ],
         hoeable: [
@@ -268,6 +259,7 @@ const DEFAULT_CONFIG = {
             nether: 1.5,
             end: 2
         },
+        czmoneyCurrencyType: "money",
         minPrice: 100, // 最低价格
         maxPrice: 1000000, // 最高价格
         refundRate: 0.7, // 退款率(0-1之间)

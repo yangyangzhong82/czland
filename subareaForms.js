@@ -186,6 +186,13 @@ function createSubArea(parentAreaId, name, point1, point2, player) {
     updateAreaData(areaData);
     // 保存数据
     if(saveAreaData(areaData)) {
+        // 显式更新创建者的区域显示
+        const { checkPlayerArea } = require('./czareaprotection'); // 确保引入 checkPlayerArea
+        try { // 添加 try-catch 保证即使 checkPlayerArea 出错也不影响返回结果
+            checkPlayerArea(player);
+        } catch (e) {
+            logError(`调用 checkPlayerArea 时出错: ${e.message}`);
+        }
         return {
             success: true,
             subareaId: subareaId

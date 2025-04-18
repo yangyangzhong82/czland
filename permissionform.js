@@ -4,7 +4,8 @@ const { isInArea, isAreaWithinArea, checkNewAreaOverlap, checkAreaSizeLimits } =
 const getOfflinePlayerData = ll.import("PlayerData", "getOfflinePlayerData");
 const getRecentPlayers = ll.import("PlayerData", "getRecentPlayers"); // <-- 新增：导入获取最近玩家函数
 const { getPlayerCustomGroups, createCustomGroup, editCustomGroup, deleteCustomGroup } = require('./customGroups'); // Removed getAllCustomGroups as getAvailableGroups is used
-const { checkPermission, setPlayerPermission, getPlayerPermission, getAvailableGroups, getAreaDefaultGroup, setAreaDefaultGroup, resetCache, getSystemDefaultPermissions, groupHasAdminPermissions } = require('./permission'); // Added getSystemDefaultPermissions, groupHasAdminPermissions
+// --- 修改: 导入 getAreaInheritFlagCached ---
+const { checkPermission, setPlayerPermission, getPlayerPermission, getAvailableGroups, getAreaDefaultGroup, setAreaDefaultGroup, resetCache, getSystemDefaultPermissions, groupHasAdminPermissions, getAreaInheritFlagCached } = require('./permission'); // Added getSystemDefaultPermissions, groupHasAdminPermissions, getAreaInheritFlagCached
 const { getPlayerData } = require('./playerDataManager');
 const { calculateAreaPrice, handleAreaPurchase, handleAreaRefund, getPlayerBalance, reducePlayerBalance, addPlayerBalance } = require('./economy'); // Added economy functions
 // LiteLoader-AIDS automatic generated
@@ -1180,6 +1181,19 @@ function showAreaDefaultGroupForm(player, areaId, origin) {
     fm.addDropdown("选择默认权限组", dropdownItems, currentIndex);
     elementIndex++; // 增加计数器
 
+    // --- 新增：子区域继承开关 ---
+    let inheritSwitchIndex = -1; // 初始化为 -1
+    let currentInheritState = true; // 默认继承
+    if (area.isSubarea) {
+        inheritSwitchIndex = elementIndex; // 记录开关索引
+        currentInheritState = getAreaInheritFlagCached(areaId) === 1; // 获取当前状态 (true/false)
+        fm.addSwitch("继承父区域默认权限", currentInheritState);
+        elementIndex++; // 增加计数器
+        fm.addLabel("§7关闭后，此子区域将不再使用父区域的默认权限组，仅使用自身设置或系统默认。");
+        elementIndex++; // 增加计数器
+    }
+    // --- 新增结束 ---
+
     const backSwitchIndex = elementIndex;
     fm.addSwitch("§c返回", false);
     elementIndex++; // 增加计数器
@@ -1200,6 +1214,13 @@ function showAreaDefaultGroupForm(player, areaId, origin) {
 
         const selectedIndex = data[dropdownIndex];
         const selectedOption = groupOptions[selectedIndex];
+        // --- 新增：获取继承开关状态 ---
+        let inheritPermissionsValue = null; // 默认为 null (不修改)
+        if (inheritSwitchIndex !== -1) { // 如果开关存在
+            inheritPermissionsValue = data[inheritSwitchIndex]; // 获取布尔值 true/false
+        }
+        // --- 新增结束 ---
+
 
         if (!selectedOption) {
             player.tell("§c无效的选择！");
@@ -1230,17 +1251,21 @@ function showAreaDefaultGroupForm(player, areaId, origin) {
             logDebug(`玩家 ${player.name} 选择为区域 ${areaId} 设置系统默认权限`);
         }
 
-        // 设置默认权限组 (使用原始组名或 null)
-        const success = setAreaDefaultGroup(areaId, groupToSet);
+        // --- 修改：调用 setAreaDefaultGroup 时传递继承标志 ---
+        // 设置默认权限组 (使用原始组名或 null) 和继承标志 (true/false 或 null)
+        const success = setAreaDefaultGroup(areaId, groupToSet, inheritPermissionsValue);
 
         if(success) {
-            const message = groupToSet
-                ? `§a已将区域默认权限组设置为: ${selectedGroupDetails?.name || groupToSet}`
-                : `§a已设置区域使用系统默认权限`;
+            let message = groupToSet
+                ? `§a已将区域默认权限组设置为: ${selectedGroupDetails?.name || groupToSet}.`
+                : `§a已设置区域使用系统默认权限.`;
+            if (inheritPermissionsValue !== null) {
+                 message += inheritPermissionsValue ? " §a将继承父区域默认权限。" : " §e将不再继承父区域默认权限。";
+            }
             player.tell(message);
             resetCache(); // 清理缓存
         } else {
-            player.tell("§c设置默认权限组失败！");
+            player.tell("§c设置区域默认设置失败！"); // 修改提示
         }
 
 
@@ -1459,15 +1484,15 @@ function showGroupUsageForm(player, areaId, origin) {
         let foundUsage = false;
 
         try {
-            const db = getDbSession();
+             const db = getDbSession();
 
-            // 1. 查找将此组设为默认权限的区域
-            const defaultStmt = db.prepare("SELECT areaId FROM default_groups WHERE groupName = ?");
-            defaultStmt.bind(selectedGroupId);
-            const defaultAreas = [];
-            while (defaultStmt.step()) {
-                defaultAreas.push(defaultStmt.fetch().areaId);
-            }
+             // 1. 查找将此组设为默认权限的区域 (查询 areas 表)
+             const defaultStmt = db.prepare("SELECT id FROM areas WHERE defaultGroupName = ?"); // 查询 areas 表的 id 列
+             defaultStmt.bind(selectedGroupId); // 绑定原始组名 (selectedGroupId)
+             const defaultAreas = [];
+             while (defaultStmt.step()) {
+                 defaultAreas.push(defaultStmt.fetch().id); // 获取区域 ID
+             }
 
             if (defaultAreas.length > 0) {
                 foundUsage = true;
@@ -1480,26 +1505,27 @@ function showGroupUsageForm(player, areaId, origin) {
                 usageInfo += "\n";
             }
 
-            // 2. 查找将此组设为特定玩家权限的区域
-            const specificStmt = db.prepare("SELECT DISTINCT areaId FROM permissions WHERE groupName = ?");
-            specificStmt.bind(selectedGroupId);
-            const specificAreas = [];
-            while (specificStmt.step()) {
-                 const currentAreaId = specificStmt.fetch().areaId;
-                 // 确保不重复添加已在默认列表中的区域
-                 if (!defaultAreas.includes(currentAreaId)) {
-                      specificAreas.push(currentAreaId);
-                 }
+             // 2. 查找将此组设为特定玩家权限的区域 (保持不变)
+             const specificStmt = db.prepare("SELECT DISTINCT areaId FROM permissions WHERE groupName = ?");
+             specificStmt.bind(selectedGroupId);
+             const specificAreasMap = {}; // 使用 Map 避免重复并方便查找
+             while (specificStmt.step()) {
+                  const currentAreaId = specificStmt.fetch().areaId;
+                  // 添加到 Map 中，键是 areaId，值可以是 true 或其他标记
+                  specificAreasMap[currentAreaId] = true;
             }
 
-            if (specificAreas.length > 0) {
-                foundUsage = true;
-                usageInfo += "§e作为特定玩家权限组:§r\n";
-                const areaDetails = getAreaData(); // 再次获取以防万一
-                specificAreas.forEach(aid => {
-                    const areaName = areaDetails[aid]?.name || `未知区域 (${aid.substring(0, 6)}...)`;
-                    usageInfo += `- ${areaName} (${aid})\n`;
-                });
+             // 从 Map 中提取区域 ID，同时过滤掉已在默认列表中的区域
+             const specificAreasFiltered = Object.keys(specificAreasMap).filter(aid => !defaultAreas.includes(aid));
+
+             if (specificAreasFiltered.length > 0) {
+                 foundUsage = true;
+                 usageInfo += "§e作为特定玩家权限组:§r\n";
+                 const areaDetails = getAreaData(); // 再次获取以防万一
+                 specificAreasFiltered.forEach(aid => {
+                     const areaName = areaDetails[aid]?.name || `未知区域 (${aid.substring(0, 6)}...)`;
+                     usageInfo += `- ${areaName} (${aid})\n`;
+                 });
                  usageInfo += "\n";
             }
 

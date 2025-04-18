@@ -105,8 +105,7 @@ function showCreateAreaForm(pl, point1, point2, areaData, playerData, saveAreaDa
         // 添加区域数量检查
         const { isAreaAdmin } = require('./areaAdmin');
         const { countPlayerAreas } = require('./utils');
-        // const { loadConfig } = require('./configManager'); // 已在上面加载
-        // const config = loadConfig(); // 已在上面加载
+
 
         // 区域管理员无视限制
         if (!isAreaAdmin(player.uuid) && config.maxAreasPerPlayer !== -1) {

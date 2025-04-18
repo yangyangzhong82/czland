@@ -69,14 +69,14 @@ function handleCurrentArea(player) {
     for (let areaInfo of areasAtPos) {
         const area = areaInfo.area;
         let buttonText = `${area.name}`;
-        let iconPath = "textures/ui/map_icon"; // 更新地图图标
+        const iconPath = "textures/items/map_filled"; // 统一使用填充地图图标
 
         // 如果是子区域，显示父区域信息
         if (areaInfo.isSubarea && areaInfo.parentAreaId) {
             const parentArea = areaData[areaInfo.parentAreaId];
             if (parentArea) {
                 buttonText += ` §7(${parentArea.name}的子区域)`;
-                iconPath = "textures/ui/icon_recipe_nature"; // 更新子区域图标
+                // iconPath 不再改变
             }
         }
 
@@ -85,9 +85,9 @@ function handleCurrentArea(player) {
             buttonText += ` §7(含${Object.keys(area.subareas).length}个子区域)`;
         }
 
-        fm.addButton(buttonText, iconPath); // 添加带图标的按钮
+        fm.addButton(buttonText, iconPath); // 使用统一的图标添加按钮
     }
-    fm.addButton("§c返回", "textures/ui/cancel"); // 路径正确
+    fm.addButton("§c返回", "textures/ui/cancel"); // 返回按钮图标保持不变
 
     player.sendForm(fm, (player, id) => {
         if (id === null) {

@@ -10,6 +10,7 @@ const getOfflinePlayerData = ll.import("PlayerData", "getOfflinePlayerData"); //
 let permissionCache = {}; // 玩家权限缓存 {playerUuid: {areaId: groupName}}
 let customGroupsCache = {}; // 自定义组缓存 {uuid: {groupName: {name, permissions, inherit}}}
 let defaultGroupsCache = {}; // 区域默认组缓存 {areaId: groupName}
+let inheritFlagCache = {}; // 新增：区域继承标志缓存 {areaId: 0 or 1}
 let systemDefaultPermissionsCache = null; // 系统默认权限缓存
 let playerNameCache = {}; // 玩家名称缓存 {uuid: name}
 const CACHE_TTL = 5 * 60 * 1000; // 缓存有效期(5分钟)
@@ -88,51 +89,122 @@ function getAvailableGroups() {
 
 
 
+// --- 修改 setAreaDefaultGroup ---
 // 为区域设置默认权限组 (groupName 为 null 表示使用系统默认)
-function setAreaDefaultGroup(areaId, groupName) {
-    // Validate areaId
+// 新增 inheritPermissions 参数 (1 表示继承, 0 表示不继承, null 表示不修改此标志)
+function setAreaDefaultGroup(areaId, groupName, inheritPermissions = null) {
+    // Validation
     if (typeof areaId !== 'string' || !areaId) {
         logError(`设置区域默认权限组失败：无效 AreaID (${areaId})`);
-         return false;
+        return false;
     }
-    // Validate groupName (allow null)
     if (groupName !== null && (typeof groupName !== 'string' || !groupName)) {
         logError(`设置区域默认权限组失败：无效 GroupName (${groupName}) for AreaID (${areaId})`);
-         return false;
+        return false;
     }
+    if (inheritPermissions !== null && typeof inheritPermissions !== 'number' && typeof inheritPermissions !== 'boolean') {
+        logError(`设置区域默认权限组失败：无效 inheritPermissions (${inheritPermissions}) for AreaID (${areaId})`);
+        return false;
+    }
+
+    // 更新缓存
     defaultGroupsCache[areaId] = groupName;
     defaultGroupsCache._timestamps = defaultGroupsCache._timestamps || {};
     defaultGroupsCache._timestamps[areaId] = Date.now();
+    if (inheritPermissions !== null) {
+        inheritFlagCache[areaId] = inheritPermissions ? 1 : 0; // 存为 1 或 0
+        inheritFlagCache._timestamps = inheritFlagCache._timestamps || {};
+        inheritFlagCache._timestamps[areaId] = Date.now();
+    }
+
+
     try {
         const db = getDbSession();
+        let sql = "UPDATE areas SET defaultGroupName = ?";
+        const params = [groupName];
 
-        if (groupName === null) {
-            // Delete the entry to signify using system default
-            const stmt = db.prepare("DELETE FROM default_groups WHERE areaId = ?");
-            stmt.bind(areaId);
-            stmt.execute();
-            // Check affected rows if needed
-            logDebug(`已将区域 ${areaId} 的默认权限设置为系统默认`);
-        } else {
-            // Insert or replace the custom default group
-            const stmt = db.prepare(`
-                INSERT OR REPLACE INTO default_groups (areaId, groupName)
-                VALUES (?, ?)
-            `);
-            stmt.bind([areaId, groupName]);
-            stmt.execute();
-            logDebug(`成功为区域 ${areaId} 设置默认权限组: ${groupName}`);
+        // 如果提供了 inheritPermissions，则同时更新
+        if (inheritPermissions !== null) {
+            sql += ", inheritDefaultPermissions = ?";
+            params.push(inheritPermissions ? 1 : 0); // 确保存入 1 或 0
         }
-        // stmt.reset(); // Reset if reusing statement object
 
-        return true;
+        sql += " WHERE id = ?";
+        params.push(areaId);
+
+        const stmt = db.prepare(sql);
+        stmt.bind(params);
+        stmt.execute();
+
+        // Check affected rows
+        let affectedRows = 0;
+        const result = db.query("SELECT changes()");
+        if (result && result.length > 1 && result[1] && typeof result[1][0] === 'number') {
+            affectedRows = result[1][0];
+        }
+
+        if (affectedRows > 0) {
+            let logMsg = `成功为区域 ${areaId} 设置默认权限组为: ${groupName === null ? '系统默认 (null)' : groupName}`;
+            if (inheritPermissions !== null) {
+                logMsg += `, 继承标志设置为: ${inheritPermissions ? 1 : 0}`;
+            }
+            logDebug(logMsg);
+            return true;
+        } else {
+            logWarning(`尝试为区域 ${areaId} 更新默认设置，但未找到该区域或更新失败`);
+            // 清理缓存
+            delete defaultGroupsCache[areaId];
+            if (defaultGroupsCache._timestamps) delete defaultGroupsCache._timestamps[areaId];
+            delete inheritFlagCache[areaId];
+            if (inheritFlagCache._timestamps) delete inheritFlagCache._timestamps[areaId];
+            return false;
+        }
     } catch(e) {
-        logger.error(`设置区域 ${areaId} 默认权限组为 ${groupName === null ? '系统默认' : groupName} 失败: ${e}`, e.stack);
+        logger.error(`设置区域 ${areaId} 默认设置失败: ${e}`, e.stack);
         return false;
     }
 }
 
 
+// ... (getSystemDefaultPermissions, getAreaDefaultGroup 保持不变) ...
+
+
+// --- 新增 getAreaInheritFlagCached ---
+/**
+ * 获取区域是否继承父区域默认权限的标志 (缓存)
+ * @param {string} areaId 区域ID
+ * @returns {number} 1 表示继承, 0 表示不继承, 默认返回 1
+ */
+function getAreaInheritFlagCached(areaId) {
+    // 检查缓存
+    const now = Date.now();
+    if (inheritFlagCache[areaId] === undefined || (inheritFlagCache._timestamps && now - inheritFlagCache._timestamps[areaId] > CACHE_TTL)) {
+        try {
+            const db = getDbSession();
+            const stmt = db.prepare("SELECT inheritDefaultPermissions FROM areas WHERE id = ?");
+            stmt.bind(areaId);
+
+            if (stmt.step()) {
+                const row = stmt.fetch();
+                // 数据库中可能是 NULL 或 1 或 0，我们需要处理 NULL 的情况，默认为 1
+                inheritFlagCache[areaId] = (row.inheritDefaultPermissions === 0) ? 0 : 1;
+            } else {
+                logWarning(`尝试缓存区域 ${areaId} 的继承标志，但未在 areas 表中找到该区域。默认为继承(1)。`);
+                inheritFlagCache[areaId] = 1; // 区域不存在时，默认行为是继承（虽然这不应该发生）
+            }
+            inheritFlagCache._timestamps = inheritFlagCache._timestamps || {};
+            inheritFlagCache._timestamps[areaId] = now;
+        } catch (e) {
+            logError(`获取区域 ${areaId} 继承标志失败: ${e}`, e.stack);
+            inheritFlagCache[areaId] = 1; // 出错时默认为继承
+        }
+    }
+    // 返回缓存值，确保是 0 或 1
+    return inheritFlagCache[areaId] === 0 ? 0 : 1;
+}
+
+
+// --- 修改 checkPermission ---
 function getSystemDefaultPermissions() {
     const config = loadConfig();
     return config.defaultGroupPermissions || [];
@@ -142,26 +214,26 @@ function getSystemDefaultPermissions() {
 function getAreaDefaultGroup(areaId) {
     if (typeof areaId !== 'string' || !areaId) {
          logger.warn(`尝试获取无效 AreaID 的默认权限组: '${areaId}'`);
-         return null;
-    }
-   try {
-       const db = getDbSession();
-       const stmt = db.prepare("SELECT groupName FROM default_groups WHERE areaId = ?");
+          return null; // Return null if areaId is invalid
+     }
+    try {
+        const db = getDbSession();
+        // Select the defaultGroupName directly from the areas table
+        const stmt = db.prepare("SELECT defaultGroupName FROM areas WHERE id = ?");
+        stmt.bind(areaId);
 
-       stmt.bind(areaId);
-       // stmt.execute(); // May not be needed
+        let groupName = null;
+        if (stmt.step()) {
+            const row = stmt.fetch();
+            // The value might be explicitly NULL in the database
+            groupName = row.defaultGroupName; // This can be null
+        }
+        // stmt.reset(); // Good practice if reusing
 
-       let groupName = null;
-       if(stmt.step()) {
-           const row = stmt.fetch();
-           groupName = row.groupName;
-       }
-       // stmt.reset();
-
-       // logDebug(`区域 ${areaId} 的默认权限组: ${groupName || '无'}`); // Can be noisy
-       return groupName; // Returns null if not found
-   } catch(e) {
-       logger.error(`获取区域 ${areaId} 默认权限组失败: ${e}`, e.stack);
+        // logDebug(`区域 ${areaId} 的默认权限组: ${groupName === null ? '系统默认 (null)' : groupName}`); // Adjusted log
+        return groupName; // Returns null if not found or explicitly set to null
+    } catch(e) {
+        logger.error(`获取区域 ${areaId} 默认权限组失败: ${e}`, e.stack);
        return null; // Return null on error
    } finally {
         // Finalize/reset stmt if needed
@@ -175,8 +247,7 @@ function getAreaDefaultGroup(areaId) {
 function checkPermission(player, areaData, areaId, permission) {
     // 定期清理缓存
     cleanupCache();
-    
-    // 获取被请求权限检查的区域
+
     const area = areaData[areaId];
     if(!area) return false;
     
@@ -219,82 +290,18 @@ function checkPermission(player, areaData, areaId, permission) {
         }
     }
 
-    // 新增：如果这是一个子区域，检查它是否在父区域中定义了更严格的权限
-    // 子区域的权限优先于父区域
-    if(area.isSubarea && area.parentAreaId) {
-        // 尝试获取该玩家在此子区域的特定权限 - 使用缓存
-        const playerCurrentAreaGroup = getPlayerPermissionCached(player.uuid, areaId);
-
-        if (playerCurrentAreaGroup && findGroupCreatorStmt) { // 检查语句是否成功编译
-            // 根据玩家特定权限组名查找是哪个UUID创建的此组
-            // const db = getDbSession(); // db 已在上面获取
-            // const stmt = db.prepare("SELECT uuid FROM custom_groups WHERE groupName = ? LIMIT 1"); // 使用预编译的语句
-            findGroupCreatorStmt.reset(); // 重置语句以备新绑定
-            findGroupCreatorStmt.bind(playerCurrentAreaGroup);
-
-            let groupUuid = null;
-            if (findGroupCreatorStmt.step()) {
-                groupUuid = findGroupCreatorStmt.fetch().uuid; // 使用 findGroupCreatorStmt
-            }
-
-            if (groupUuid) {
-                // 使用缓存获取组详情
-                const group = getCustomGroupCached(groupUuid, playerCurrentAreaGroup);
-                if (group) {
-                    const hasPermission = group.permissions.includes(permission);
-                    logDebug(`子区域特定权限检查结果: ${hasPermission ? "允许" : "拒绝"}`);
-                    return hasPermission;
-                }
-            }
-        }
-        
-        // 检查子区域默认权限组 - 使用缓存
-        const areaDefaultGroup = getAreaDefaultGroupCached(areaId);
-        if (areaDefaultGroup && findGroupCreatorStmt) { // 检查语句是否成功编译
-            // 查找此组详情
-            // const db = getDbSession(); // db 已在上面获取
-            // const stmt = db.prepare("SELECT uuid FROM custom_groups WHERE groupName = ? LIMIT 1"); // 使用预编译的语句
-            findGroupCreatorStmt.reset(); // 重置语句
-            findGroupCreatorStmt.bind(areaDefaultGroup);
-
-            let groupUuid = null;
-            if (findGroupCreatorStmt.step()) {
-                groupUuid = findGroupCreatorStmt.fetch().uuid; // 使用 findGroupCreatorStmt
-            }
-
-            if (groupUuid) {
-                const group = getCustomGroupCached(groupUuid, areaDefaultGroup);
-                if (group) {
-                    const hasPermission = group.permissions.includes(permission);
-                    logDebug(`子区域默认权限组检查结果: ${hasPermission ? "允许" : "拒绝"}`);
-                    return hasPermission;
-                }
-            }
-        }
-    }
-
-    // 获取玩家在此区域的特定权限组设置 - 使用缓存
-    const playerSpecificGroup = getPlayerPermissionCached(player.uuid, areaId);
-
-    // 检查是否为子区域
+    // --- 权限检查顺序调整 ---
     const isSubarea = area.isSubarea && area.parentAreaId;
     logDebug(`区域 ${areaId} ${isSubarea ? '是子区域，父区域为: ' + area.parentAreaId : '不是子区域'}`);
-    
-    // 1. 检查当前区域特定玩家权限组
-    if (playerSpecificGroup && findGroupCreatorStmt) { // 检查语句是否成功编译
+
+    // 1. 检查当前区域特定玩家权限组 (不变)
+    const playerSpecificGroup = getPlayerPermissionCached(player.uuid, areaId);
+    if (playerSpecificGroup && findGroupCreatorStmt) {
         logDebug(`玩家 ${player.name} 在当前区域 ${areaId} 有指定权限组: ${playerSpecificGroup}`);
-
-        // 查找此组详情
-        // const db = getDbSession(); // db 已在上面获取
-        // const stmt = db.prepare("SELECT uuid FROM custom_groups WHERE groupName = ? LIMIT 1"); // 使用预编译的语句
-        findGroupCreatorStmt.reset(); // 重置语句
+        findGroupCreatorStmt.reset();
         findGroupCreatorStmt.bind(playerSpecificGroup);
-
         let groupUuid = null;
-        if (findGroupCreatorStmt.step()) {
-            groupUuid = findGroupCreatorStmt.fetch().uuid; // 使用 findGroupCreatorStmt
-        }
-
+        if (findGroupCreatorStmt.step()) { groupUuid = findGroupCreatorStmt.fetch().uuid; }
         if (groupUuid) {
             const group = getCustomGroupCached(groupUuid, playerSpecificGroup);
             if (group) {
@@ -303,56 +310,17 @@ function checkPermission(player, areaData, areaId, permission) {
                 return hasPermission;
             }
         }
-        
         logWarning(`玩家 ${player.name} 在区域 ${areaId} 设置的权限组 ${playerSpecificGroup} 未找到，将忽略此设置。`);
     }
 
-    // 2. 如果是子区域，检查主区域特定玩家权限组
-    if (isSubarea) {
-        const playerParentSpecificGroup = getPlayerPermissionCached(player.uuid, area.parentAreaId);
-        if (playerParentSpecificGroup && findGroupCreatorStmt) { // 检查语句是否成功编译
-            logDebug(`玩家 ${player.name} 在父区域 ${area.parentAreaId} 有指定权限组: ${playerParentSpecificGroup}`);
-
-            // 查找此组详情
-            // const db = getDbSession(); // db 已在上面获取
-            // const stmt = db.prepare("SELECT uuid FROM custom_groups WHERE groupName = ? LIMIT 1"); // 使用预编译的语句
-            findGroupCreatorStmt.reset(); // 重置语句
-            findGroupCreatorStmt.bind(playerParentSpecificGroup);
-
-            let groupUuid = null;
-            if (findGroupCreatorStmt.step()) {
-                groupUuid = findGroupCreatorStmt.fetch().uuid; // 使用 findGroupCreatorStmt
-            }
-
-            if (groupUuid) {
-                const group = getCustomGroupCached(groupUuid, playerParentSpecificGroup);
-                if (group) {
-                    const hasPermission = group.permissions.includes(permission);
-                    logDebug(`权限检查结果(父区域特定组 ${playerParentSpecificGroup}): ${hasPermission ? "允许" : "拒绝"}`);
-                    return hasPermission;
-                }
-            }
-            
-            logWarning(`玩家 ${player.name} 在父区域 ${area.parentAreaId} 设置的权限组 ${playerParentSpecificGroup} 未找到，将忽略此设置。`);
-        }
-    }
-
-    // 3. 检查当前区域默认权限组 - 使用缓存
-    const areaDefaultGroupCurrent = getAreaDefaultGroupCached(areaId); // 重命名变量避免与上面子区域检查中的 areaDefaultGroup 冲突
-    if (areaDefaultGroupCurrent && findGroupCreatorStmt) { // 检查语句是否成功编译
+    // 2. 检查当前区域默认权限组 (不变)
+    const areaDefaultGroupCurrent = getAreaDefaultGroupCached(areaId);
+    if (areaDefaultGroupCurrent && findGroupCreatorStmt) {
         logDebug(`区域 ${areaId} 使用默认权限组: ${areaDefaultGroupCurrent}`);
-
-        // 查找此组详情
-        // const db = getDbSession(); // db 已在上面获取
-        // const stmt = db.prepare("SELECT uuid FROM custom_groups WHERE groupName = ? LIMIT 1"); // 使用预编译的语句
-        findGroupCreatorStmt.reset(); // 重置语句
+        findGroupCreatorStmt.reset();
         findGroupCreatorStmt.bind(areaDefaultGroupCurrent);
-
         let groupUuid = null;
-        if (findGroupCreatorStmt.step()) {
-            groupUuid = findGroupCreatorStmt.fetch().uuid; // 使用 findGroupCreatorStmt
-        }
-
+        if (findGroupCreatorStmt.step()) { groupUuid = findGroupCreatorStmt.fetch().uuid; }
         if (groupUuid) {
             const group = getCustomGroupCached(groupUuid, areaDefaultGroupCurrent);
             if (group) {
@@ -361,46 +329,79 @@ function checkPermission(player, areaData, areaId, permission) {
                 return hasPermission;
             }
         }
-        
         logWarning(`区域 ${areaId} 设置的默认权限组 ${areaDefaultGroupCurrent} 未找到，将忽略此设置。`);
     }
 
-    // 4. 如果是子区域，检查主区域默认权限组
+    // --- 修改：子区域继承检查 ---
+    // 3. 如果是子区域，根据继承标志决定是否检查父区域
     if (isSubarea) {
-        const parentAreaDefaultGroup = getAreaDefaultGroupCached(area.parentAreaId);
-        if (parentAreaDefaultGroup && findGroupCreatorStmt) { // 检查语句是否成功编译
-            logDebug(`父区域 ${area.parentAreaId} 使用默认权限组: ${parentAreaDefaultGroup}`);
+        const inheritFlag = getAreaInheritFlagCached(areaId); // 获取继承标志
+        logDebug(`子区域 ${areaId} 继承标志: ${inheritFlag}`);
 
-            // 查找此组详情
-            // const db = getDbSession(); // db 已在上面获取
-            // const stmt = db.prepare("SELECT uuid FROM custom_groups WHERE groupName = ? LIMIT 1"); // 使用预编译的语句
-            findGroupCreatorStmt.reset(); // 重置语句
-            findGroupCreatorStmt.bind(parentAreaDefaultGroup);
+        if (inheritFlag === 1) { // 如果允许继承
+            logDebug(`子区域 ${areaId} 允许继承，继续检查父区域 ${area.parentAreaId}`);
 
-            let groupUuid = null;
-            if (findGroupCreatorStmt.step()) {
-                groupUuid = findGroupCreatorStmt.fetch().uuid; // 使用 findGroupCreatorStmt
-            }
+            // 3.1 检查父区域特定玩家权限组
+            const playerParentSpecificGroup = getPlayerPermissionCached(player.uuid, area.parentAreaId);
+            if (playerParentSpecificGroup && findGroupCreatorStmt) { // 检查语句是否成功编译
+                logDebug(`玩家 ${player.name} 在父区域 ${area.parentAreaId} 有指定权限组: ${playerParentSpecificGroup}`);
+                findGroupCreatorStmt.reset(); // 重置语句
+                findGroupCreatorStmt.bind(playerParentSpecificGroup);
 
-            if (groupUuid) {
-                const group = getCustomGroupCached(groupUuid, parentAreaDefaultGroup);
-                if (group) {
-                    const hasPermission = group.permissions.includes(permission);
-                    logDebug(`权限检查结果(父区域默认组 ${parentAreaDefaultGroup}): ${hasPermission ? "允许" : "拒绝"}`);
-                    return hasPermission;
+                let groupUuid = null;
+                if (findGroupCreatorStmt.step()) {
+                    groupUuid = findGroupCreatorStmt.fetch().uuid; // 使用 findGroupCreatorStmt
                 }
+
+                if (groupUuid) {
+                    const group = getCustomGroupCached(groupUuid, playerParentSpecificGroup);
+                    if (group) {
+                        const hasPermission = group.permissions.includes(permission);
+                        logDebug(`权限检查结果(父区域特定组 ${playerParentSpecificGroup}): ${hasPermission ? "允许" : "拒绝"}`);
+                        return hasPermission;
+                    }
+                }
+
+                logWarning(`玩家 ${player.name} 在父区域 ${area.parentAreaId} 设置的权限组 ${playerParentSpecificGroup} 未找到，将忽略此设置。`);
             }
-            
-            logWarning(`父区域 ${area.parentAreaId} 设置的默认权限组 ${parentAreaDefaultGroup} 未找到，将忽略此设置。`);
+
+            // 3.2 检查父区域默认权限组
+            const parentAreaDefaultGroup = getAreaDefaultGroupCached(area.parentAreaId);
+            if (parentAreaDefaultGroup && findGroupCreatorStmt) { // 检查语句是否成功编译
+                logDebug(`父区域 ${area.parentAreaId} 使用默认权限组: ${parentAreaDefaultGroup}`);
+                findGroupCreatorStmt.reset(); // 重置语句
+                findGroupCreatorStmt.bind(parentAreaDefaultGroup);
+
+                let groupUuid = null;
+                if (findGroupCreatorStmt.step()) {
+                    groupUuid = findGroupCreatorStmt.fetch().uuid; // 使用 findGroupCreatorStmt
+                }
+
+                if (groupUuid) {
+                    const group = getCustomGroupCached(groupUuid, parentAreaDefaultGroup);
+                    if (group) {
+                        const hasPermission = group.permissions.includes(permission);
+                        logDebug(`权限检查结果(父区域默认组 ${parentAreaDefaultGroup}): ${hasPermission ? "允许" : "拒绝"}`);
+                        return hasPermission;
+                    }
+                }
+
+                logWarning(`父区域 ${area.parentAreaId} 设置的默认权限组 ${parentAreaDefaultGroup} 未找到，将忽略此设置。`);
+            }
+        } else {
+            logDebug(`子区域 ${areaId} 不继承父区域权限，停止向上检查。`);
+            // 如果不继承，且前面子区域的特定和默认权限都没匹配上，则直接跳到系统默认权限
         }
     }
+    // --- 继承检查结束 ---
 
-    // 5. 最后使用系统默认权限（最低优先级）- 使用缓存
-    logDebug(`玩家 ${player.name} 在区域 ${areaId} 未匹配特定或区域默认权限组，使用系统默认权限检查: ${permission}`);
+
+    // 4. 最后使用系统默认权限（最低优先级）- 使用缓存 (不变)
+    logDebug(`玩家 ${player.name} 在区域 ${areaId} 未匹配特定或区域(及父区域，若继承)默认权限组，使用系统默认权限检查: ${permission}`);
     const defaultPermissions = getSystemDefaultPermissionsCached();
     const hasDefaultPermission = defaultPermissions.includes(permission);
     logDebug(`权限检查结果(系统默认): ${hasDefaultPermission ? "允许" : "拒绝"}`);
-    
+
     return hasDefaultPermission;
 }
 
@@ -629,19 +630,15 @@ function cleanAreaPermissions(areaId) {
          permStmt.bind(areaId);
          permStmt.execute();
          // Check changes if needed
-         // permStmt.reset();
-         logDebug(`已清理区域 ${areaId} 的玩家特定权限`);
+          // permStmt.reset();
+          logDebug(`已清理区域 ${areaId} 的玩家特定权限`);
 
-         // Delete default group setting for this area
-         const defaultStmt = db.prepare("DELETE FROM default_groups WHERE areaId = ?");
-         defaultStmt.bind(areaId);
-         defaultStmt.execute();
-         // Check changes if needed
-         // defaultStmt.reset();
-         logDebug(`已清理区域 ${areaId} 的默认权限组设置`);
+          // No longer need to delete from default_groups table as it's removed.
+          // The defaultGroupName column in 'areas' will be removed when the area row is deleted.
+          // logDebug(`区域 ${areaId} 的默认权限组设置将在区域删除时自动清理`);
 
-         db.exec("COMMIT");
-         logInfo(`成功清理区域 ${areaId} 的所有相关权限数据`);
+          db.exec("COMMIT");
+          logInfo(`成功清理区域 ${areaId} 的玩家特定权限数据`); // Updated log message
 
     } catch (e) {
          logger.error(`清理区域 ${areaId} 权限数据失败: ${e}`, e.stack);
@@ -739,16 +736,19 @@ function getPlayerPermissionCached(playerUuid, areaId) {
 
 function getAreaDefaultGroupCached(areaId) {
     // 检查缓存
-    if (defaultGroupsCache[areaId] === undefined) {
+    if (defaultGroupsCache[areaId] === undefined || defaultGroupsCache[areaId] === null && (!defaultGroupsCache._timestamps || !defaultGroupsCache._timestamps[areaId])) { // Check if undefined or explicitly null and not recently cached
         const db = getDbSession();
-        const stmt = db.prepare("SELECT groupName FROM default_groups WHERE areaId = ?");
+        // Query the areas table for defaultGroupName
+        const stmt = db.prepare("SELECT defaultGroupName FROM areas WHERE id = ?");
         stmt.bind(areaId);
-        
+
         if (stmt.step()) {
             const row = stmt.fetch();
-            defaultGroupsCache[areaId] = row.groupName;
+            defaultGroupsCache[areaId] = row.defaultGroupName; // Cache the value (can be null)
         } else {
-            defaultGroupsCache[areaId] = null; // 显式缓存null结果
+            // Area not found, cache null but maybe log a warning?
+            logWarning(`尝试缓存区域 ${areaId} 的默认组，但未在 areas 表中找到该区域。`);
+            defaultGroupsCache[areaId] = null; // Cache null if area doesn't exist
         }
         defaultGroupsCache._timestamps = defaultGroupsCache._timestamps || {};
         defaultGroupsCache._timestamps[areaId] = Date.now();
@@ -806,14 +806,15 @@ function getSystemDefaultPermissionsCached() {
     }
     return systemDefaultPermissionsCache.permissions;
 }
-// 缓存清理函数
+// --- 修改 cleanupCache ---
 function cleanupCache() {
     const now = Date.now();
-    // 每5分钟最多检查一次过期缓存
-    if (now - lastCacheCleanup < 5 * 60 * 1000) return;
-    
+    if (now - lastCacheCleanup < CACHE_TTL) return; // 使用常量
+
     lastCacheCleanup = now;
-    
+    logDebug("开始清理过期权限缓存...");
+    let cleanedCount = 0;
+
     // 清理玩家权限缓存
     for (const uuid in permissionCache) {
         if (permissionCache[uuid]._timestamp && now - permissionCache[uuid]._timestamp > CACHE_TTL) {
@@ -833,21 +834,43 @@ function cleanupCache() {
         for (const areaId in defaultGroupsCache._timestamps) {
             if (now - defaultGroupsCache._timestamps[areaId] > CACHE_TTL) {
                 delete defaultGroupsCache[areaId];
-                delete defaultGroupsCache._timestamps[areaId];
+            delete defaultGroupsCache[areaId];
+            delete defaultGroupsCache._timestamps[areaId];
+            cleanedCount++;
             }
         }
     }
-    
+
+    // --- 新增：清理继承标志缓存 ---
+    if (inheritFlagCache._timestamps) {
+        for (const areaId in inheritFlagCache._timestamps) {
+            if (now - inheritFlagCache._timestamps[areaId] > CACHE_TTL) {
+                delete inheritFlagCache[areaId];
+                delete inheritFlagCache._timestamps[areaId];
+                cleanedCount++;
+            }
+        }
+    }
+    // --- 新增结束 ---
+
+
     // 清理系统默认权限缓存
     if (systemDefaultPermissionsCache && now - systemDefaultPermissionsCache._timestamp > CACHE_TTL) {
         systemDefaultPermissionsCache = null;
+        cleanedCount++;
+    }
+
+    if (cleanedCount > 0) {
+        logDebug(`权限缓存清理完成，移除了 ${cleanedCount} 个过期条目。`);
     }
 }
 
+// --- 修改 resetCache ---
 function resetCache() {
     permissionCache = {};
     customGroupsCache = {};
     defaultGroupsCache = {};
+    inheritFlagCache = {}; // 新增
     systemDefaultPermissionsCache = null;
     lastCacheCleanup = Date.now();
     logInfo("权限缓存已完全重置");
@@ -873,7 +896,8 @@ module.exports = {
     setPlayerPermission,
     getPlayerPermission,
     getAreaDefaultGroup,
-    setAreaDefaultGroup,
+    setAreaDefaultGroup, // 已更新
+    getAreaInheritFlagCached, // 新增
     cleanAreaPermissions,
     getPlayerAllPermissions,
     getSystemDefaultPermissions,
@@ -881,6 +905,6 @@ module.exports = {
     hasPermissionInCustomGroup,
     groupHasAdminPermissions,
     getAvailableGroups,
-    resetCache,
-    groupHasPermission 
+    resetCache, // 已更新
+    groupHasPermission
 };
